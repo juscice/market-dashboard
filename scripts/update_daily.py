@@ -454,9 +454,11 @@ def build_single_file_snapshot(root_dir: Path, template_name: str, out_name: str
     safe_json = json_text.replace("</", "<\\/")
     safe_app = app_src.replace("</script>", "<\\/script>")
 
-    html_out = html_src.replace(
-        '<link rel="stylesheet" href="assets/styles.css" />',
-        f"<style>\n{css_src}\n</style>",
+    import re as _re
+    html_out = _re.sub(
+        r'<link rel="stylesheet" href="assets/styles\.css(?:\?[^"]*)?"\s*/>',
+        lambda _: f"<style>\n{css_src}\n</style>",
+        html_src,
     )
 
     if echarts_path.exists():
@@ -475,13 +477,15 @@ def build_single_file_snapshot(root_dir: Path, template_name: str, out_name: str
     live_engine_path = root_dir / "assets" / "live_engine.js"
     if live_engine_path.exists():
         live_src = live_engine_path.read_text(encoding="utf-8").replace("</script>", "<\\/script>")
-        html_out = html_out.replace(
-            '<script src="assets/live_engine.js"></script>',
-            f"<script>\n{live_src}\n</script>",
+        html_out = _re.sub(
+            r'<script src="assets/live_engine\.js(?:\?[^"]*)?"></script>',
+            lambda _: f"<script>\n{live_src}\n</script>",
+            html_out,
         )
-    html_out = html_out.replace(
-        '<script src="assets/app.js"></script>',
-        f"<script>\n{safe_app}\n</script>",
+    html_out = _re.sub(
+        r'<script src="assets/app\.js(?:\?[^"]*)?"></script>',
+        lambda _: f"<script>\n{safe_app}\n</script>",
+        html_out,
     )
 
     dist_dir = root_dir / "dist"
