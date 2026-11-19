@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>A股与大类资产每日投研监控看板</title>
+  <meta name="description" content="每日自动更新的多资产投研看板：沪深300全收益与二级债基波动收敛、国家队16只宽基ETF份额动向，以及科创50、创业板50、黄金日K与SMC聪明钱技术分析。" />
+  <meta property="og:type" content="website" />
+  <meta property="og:title" content="A股与大类资产每日投研监控看板" />
+  <meta property="og:description" content="股债波动收敛 · 国家队宽基ETF份额 · 科创50 / 创业板50 / 黄金 日K + SMC聪明钱结构" />
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23141c2b'/%3E%3Cpath d='M6 22l6-7 5 4 9-11' stroke='%2360a5fa' stroke-width='3' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E" />
+  <link rel="stylesheet" href="assets/styles.css" />
+  <script src="assets/vendor/echarts.min.js"
+          onerror="document.write('<script src=&quot;https://cdn.bootcdn.net/ajax/libs/echarts/5.5.0/echarts.min.js&quot;><\/script>')"></script>
+</head>
+<body data-page="market">
+  <header class="topbar">
+    <div class="topbar-inner">
+      <div class="brand">
+        <div class="brand-mark"></div>
+        <div>
+          <h1 id="pageTitle">A股与大类资产每日投研监控看板</h1>
+          <div class="brand-meta" id="metaLine">正在加载最新市场数据…</div>
+        </div>
+      </div>
+      <nav class="nav-links">
+        <a href="#sec-convergence">1. 股债收敛</a>
+        <a href="#sec-gjd">2. 国家队份额</a>
+        <a href="#sec-star50">3. 科创50</a>
+        <a href="#sec-cyb50">4. 创业板50</a>
+        <a href="#sec-gold">5. 黄金</a>
+        <a href="#sec-method">方案与口径</a>
+        <button type="button" class="refresh-btn" id="shareBtn" title="复制页面链接分享给他人">🔗 分享链接</button>
+        <button type="button" class="refresh-btn" id="refreshBtn" title="刷新最新看板数据">↻ 刷新数据</button>
+      </nav>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <div class="banner" id="banner"></div>
+
+    <!-- 全局概览卡片（5大核心项目） -->
+    <section class="kpi-strip" id="kpiStrip"></section>
+
+    <!-- 项目 1：沪深300全收益 vs 二级债基指数 -->
+    <section class="section" id="sec-convergence">
+      <div class="sec-header">
+        <div class="sec-title-wrap">
+          <div class="sec-bar"></div>
+          <div>
+            <h2 class="sec-title">1. 沪深300全收益指数 vs 二级债基指数（波动收敛走势）</h2>
+            <div class="sec-subtitle">以 2004-12-31 为基期对比权益核心资产（含分红再投资）与“固收+”基准的长期收敛与极值跌破信号</div>
+          </div>
+        </div>
+        <div class="sec-date-badge num" id="convDateBadge">数据日期：—</div>
+      </div>
+
+      <div class="toolbar">
+        <div style="display:flex;flex-wrap:wrap;align-items:center;gap:10px;">
+          <div class="btn-group" id="convScaleGroup">
+            <button type="button" data-scale="linear" class="active">线性</button>
+            <button type="button" data-scale="log">对数</button>
+          </div>
+          <div class="toggle-pills">
+            <button type="button" class="pill" id="toggleCsiBond">叠加中证债基 H11023 原始线</button>
+            <button type="button" class="pill active" id="toggleSpreadChart">显示相对剪刀差副图</button>
+          </div>
+        </div>
+        <div class="hint-line" id="convEpisodeHint">红圈 = 300全收益跌破二级债基指数的时点；灰带 = 处于跌破状态的区间</div>
+      </div>
+
+      <div class="stat-row" id="convStats"></div>
+      <div class="chart-lg" id="chartConv"></div>
+      <div class="chart-sm" id="chartConvSpread"></div>
+      <div class="ep-chips" id="convEpisodes"></div>
+      <div class="footnote" id="convFootnote"></div>
+    </section>
+
+    <!-- 项目 2：“国家队”持有全A份额走势 -->
+    <section class="section" id="sec-gjd">
+      <div class="sec-header">
+        <div class="sec-title-wrap">
+          <div class="sec-bar" style="background:var(--blue)"></div>
+          <div>
+            <h2 class="sec-title">2. “国家队”持有全A宽基ETF份额与动向走势</h2>
+            <div class="sec-subtitle">追踪中央汇金、国新、诚通等机构重仓的 16 只核心宽基 ETF 总份额、估算净申赎及股指期货套保窗口（参考 etf.maomaoci-a.com）</div>
+          </div>
+        </div>
+        <div class="sec-date-badge num" id="gjdDateBadge">数据日期：—</div>
+      </div>
+
+      <div class="stat-row" id="gjdStats"></div>
+
+      <div class="toolbar">
+        <div class="btn-group" id="gjdModeGroup">
+          <button type="button" data-mode="shares_flow" class="active">总份额走势 + 净申赎</button>
+          <button type="button" data-mode="cum_flow">单日净流入 + 累计净流入</button>
+          <button type="button" data-mode="a_share_pct">监控规模占全A估算市值比</button>
+        </div>
+        <div class="hint-line">注：份额剔除了价格涨跌干扰，更真实反映一级市场大资金净申购/赎回行为</div>
+      </div>
+
+      <div class="chart-md" id="chartGjdTotal"></div>
+
+      <div class="two-col" style="margin-top:14px;">
+        <div class="sub-panel">
+          <div class="sub-panel-head">
+            <h3>单只国家队重仓ETF明细</h3>
+            <select id="gjdEtfSel"></select>
+          </div>
+          <div class="chart-md" style="height:290px;" id="chartGjdOne"></div>
+        </div>
+        <div class="sub-panel" id="gjdFutBox">
+          <div class="sub-panel-head">
+            <h3 id="gjdFutTitle">中信期货股指净空头走势</h3>
+            <span class="code-tag" id="gjdFutDate">中金所前20会员口径</span>
+          </div>
+          <div class="chart-md" style="height:290px;" id="chartGjdFut"></div>
+        </div>
+      </div>
+
+      <details open style="margin-top:14px;">
+        <summary>16只监控宽基ETF最新份额与净流入快照（点击表头可排序）</summary>
+        <div class="tbl-wrap">
+          <table id="gjdTable">
+            <thead>
+              <tr>
+                <th class="l" data-k="code">代码</th>
+                <th class="l" data-k="full">基金名称</th>
+                <th class="l" data-k="index">跟踪指数</th>
+                <th data-k="shares">最新份额<br>(亿份)</th>
+                <th data-k="d_shares">当日变动<br>(亿份)</th>
+                <th data-k="flow1">当日净流入<br>(亿元)</th>
+                <th data-k="flow5">近5日<br>(亿元)</th>
+                <th data-k="flow20">近20日<br>(亿元)</th>
+                <th data-k="close">最新价</th>
+                <th class="l" data-k="note">国家队持仓备注</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+            <tfoot></tfoot>
+          </table>
+        </div>
+      </details>
+
+      <details style="margin-top:8px;">
+        <summary>国家队官方持仓基准（定期报告披露）</summary>
+        <div class="tbl-wrap">
+          <table id="gjdBaseTable">
+            <thead>
+              <tr>
+                <th class="l">机构主体</th>
+                <th>持有ETF数</th>
+                <th>持仓份额(亿份)</th>
+                <th>持仓市值(亿元)</th>
+                <th>平均持仓占比</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <div class="footnote" id="gjdBaseNote" style="margin-top:6px;border-top:none;padding-top:2px;"></div>
+      </details>
+
+      <div class="footnote" id="gjdFootnote"></div>
+    </section>
+
+    <!-- 项目 3：科创50 技术分析 -->
+    <section class="section" id="sec-star50">
+      <div class="sec-header">
+        <div class="sec-title-wrap">
+          <div class="sec-bar" style="background:var(--purple)"></div>
+          <div>
+            <h2 class="sec-title">3. 科创50 技术分析走势图（000688.SH · 日K + SMC聪明钱框架）</h2>
+            <div class="sec-subtitle">结合均线/布林带/MACD/RSI 与 TradingView 热门 SMC 市场结构（BOS/CHoCH、订单块 OB、FVG、折溢价区、EQH/EQL）</div>
+          </div>
+        </div>
+        <div class="sec-date-badge num" id="star50DateBadge">数据日期：—</div>
+      </div>
+
+      <div class="toolbar" id="star50Toolbar"></div>
+      <div class="sub-panel-head" id="head-star50"></div>
+      <div class="smc-ribbon" id="ribbon-star50"></div>
+      <div class="chart-tech" id="chart-star50"></div>
+      <div class="footnote" id="star50Footnote"></div>
+    </section>
+
+    <!-- 项目 4：创业板50 技术分析 -->
+    <section class="section" id="sec-cyb50">
+      <div class="sec-header">
+        <div class="sec-title-wrap">
+          <div class="sec-bar" style="background:var(--teal)"></div>
+          <div>
+            <h2 class="sec-title">4. 创业板50 技术分析走势图（399673.SZ · 日K + SMC聪明钱框架）</h2>
+            <div class="sec-subtitle">创业板核心权重指数日K行情、成交量、MACD/RSI 及双层 SMC 聪明钱市场结构</div>
+          </div>
+        </div>
+        <div class="sec-date-badge num" id="cyb50DateBadge">数据日期：—</div>
+      </div>
+
+      <div class="toolbar" id="cyb50Toolbar"></div>
+      <div class="sub-panel-head" id="head-cyb50"></div>
+      <div class="smc-ribbon" id="ribbon-cyb50"></div>
+      <div class="chart-tech" id="chart-cyb50"></div>
+      <div class="footnote" id="cyb50Footnote"></div>
+    </section>
+
+    <!-- 项目 5：黄金技术分析 -->
+    <section class="section" id="sec-gold">
+      <div class="sec-header">
+        <div class="sec-title-wrap">
+          <div class="sec-bar" style="background:var(--amber)"></div>
+          <div>
+            <h2 class="sec-title">5. 黄金技术分析走势图（日K + SMC聪明钱框架）</h2>
+            <div class="sec-subtitle">支持一键切换沪金主力连续（AU0，含成交量）、上海金现货（Au99.99，上金所官方）与华安黄金ETF（518880）</div>
+          </div>
+        </div>
+        <div class="btn-group" id="goldSymbolGroup">
+          <button type="button" data-key="gold_au0" class="active">沪金主连 AU0</button>
+          <button type="button" data-key="gold_sge">上海金 Au99.99</button>
+          <button type="button" data-key="gold_etf">黄金ETF 518880</button>
+        </div>
+      </div>
+
+      <div class="toolbar" id="goldToolbar"></div>
+      <div class="sub-panel-head" id="head-gold"></div>
+      <div class="smc-ribbon" id="ribbon-gold"></div>
+      <div class="chart-tech" id="chart-gold"></div>
+      <div class="footnote" id="goldFootnote"></div>
+    </section>
+
+    <!-- 统一方案与方法论说明 -->
+    <section class="section" id="sec-method">
+      <div class="sec-header">
+        <div class="sec-title-wrap">
+          <div class="sec-bar" style="background:var(--sub)"></div>
+          <div>
+            <h2 class="sec-title">统一方案、数据口径与防未来函数说明</h2>
+            <div class="sec-subtitle">集中提炼自 AI公园 GitHub 开源金融项目榜单、亿点毛噜噜 SMC 框架、simonlin1212/a-stock-data V3.10.4 与 etf.maomaoci-a.com</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="method-grid">
+        <div class="method-card">
+          <h4>一、工程闭环与可维护架构</h4>
+          <p>吸收 <b>daily_stock_analysis / tick-stock-panel / etf.maomaoci-a.com</b> 的轻量化思路：采用 <b>「Python 定时取数引擎 → 静态 JSON/JS 快照 → 纯前端 ECharts 看板」</b> 三层解耦结构，ECharts 引擎本地内置零外部 CDN 依赖，支持 GitHub Pages 公开分享与单文件离线转发。</p>
+        </div>
+        <div class="method-card">
+          <h4>二、免Key数据源优先级与口径防坑</h4>
+          <p>遵循 <b>a-stock-data V3.10.4</b> 铁律：行情优先走不封 IP 的<b>腾讯财经（三入口轮换）</b>、<b>中证官方（H00300/H11023/H11022）</b>、<b>上金所官方（Au99.99）</b>、<b>新浪期货（AU0）</b>及<b>上交所/深交所官方 ETF 份额</b>，并配置增量缓存兜底。</p>
+        </div>
+        <div class="method-card">
+          <h4>三、SMC 聪明钱指标与防未来函数</h4>
+          <p>参考 <b>LuxAlgo SMC</b> 与招商证券研报框架，在日K上区分<b>波段结构（L=10，实线）</b>与<b>内部结构（L=3，虚线）</b>，以收盘价突破判定 BOS/CHoCH，以 High/Low 触碰判定订单块（OB）失效。<b>重要提示</b>：分形支点存在 L 个交易日确认滞后，订单块在结构突破日才生成并向左锚定参考K线，复盘时切勿将左端锚点误作当下实时信号；Weak Low 仅代表顺势角色，不等于底部确认。</p>
+        </div>
+      </div>
+    </section>
+
+    <footer class="footer">
+      数据来源：中证指数官网 / 上交所 / 深交所 / 中金所 / 上金所 / 腾讯财经 / 新浪期货 / etf.maomaoci-a.com　·　本页面仅用于投研数据展示与技术方法验证，不构成任何投资建议
+    </footer>
+  </main>
+
+  <div class="toast" id="toast"></div>
+  <script src="data/dashboard_data.js"></script>
+  <script src="assets/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>燕东微（688172.SH）每日技术分析看板</title>
+  <meta name="description" content="燕东微（688172.SH）每日自动更新技术分析看板：科创板日K前复权、SMC聪明钱结构（BOS/CHoCH/订单块OB/FVG/折溢价区）与实时估值市值校准快照。" />
+  <meta property="og:type" content="website" />
+  <meta property="og:title" content="燕东微（688172.SH）每日技术分析看板" />
+  <meta property="og:description" content="日K前复权 · 科创板量价口径校准 · SMC聪明钱结构与关键价位追踪" />
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23141c2b'/%3E%3Cpath d='M6 22l6-7 5 4 9-11' stroke='%23f87171' stroke-width='3' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E" />
+  <link rel="stylesheet" href="assets/styles.css" />
+  <script src="assets/vendor/echarts.min.js"
+          onerror="document.write('<script src=&quot;https://cdn.bootcdn.net/ajax/libs/echarts/5.5.0/echarts.min.js&quot;><\/script>')"></script>
+</head>
+<body data-page="yandongwei">
+  <header class="topbar">
+    <div class="topbar-inner">
+      <div class="brand">
+        <div class="brand-mark" style="background:linear-gradient(180deg, var(--red) 0%, var(--ink) 100%);"></div>
+        <div>
+          <h1 id="pageTitle">燕东微（688172.SH）每日技术分析看板</h1>
+          <div class="brand-meta" id="metaLine">正在加载最新行情数据…</div>
+        </div>
+      </div>
+      <nav class="nav-links">
+        <a href="#sec-ydw">日K + SMC走势</a>
+        <a href="#sec-ydw-levels">关键结构与订单块</a>
+        <a href="#sec-ydw-method">口径与风险提示</a>
+        <button type="button" class="refresh-btn" id="shareBtn" title="复制页面链接分享给他人">🔗 分享链接</button>
+        <button type="button" class="refresh-btn" id="refreshBtn" title="刷新最新看板数据">↻ 刷新数据</button>
+      </nav>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <div class="banner" id="banner"></div>
+
+    <!-- 主技术分析面板 -->
+    <section class="section" id="sec-ydw">
+      <div class="sec-header">
+        <div class="sec-title-wrap">
+          <div class="sec-bar" style="background:var(--red)"></div>
+          <div>
+            <h2 class="sec-title">燕东微（688172.SH）技术分析走势图（日K + SMC + 估值快照）</h2>
+            <div class="sec-subtitle">科创板半导体个股日K前复权行情、SMC聪明钱双层结构（BOS/CHoCH/订单块OB/FVG/折溢价区）与腾讯校准快照</div>
+          </div>
+        </div>
+        <div class="sec-date-badge num" id="ydwDateBadge">数据日期：—</div>
+      </div>
+
+      <div class="stat-row" id="ydwQuoteStats"></div>
+      <div class="toolbar" id="ydwToolbar"></div>
+      <div class="smc-ribbon" id="ribbon-ydw"></div>
+      <div class="chart-tech" style="height:560px;" id="chart-ydw"></div>
+      <div class="footnote" id="ydwFootnote"></div>
+    </section>
+
+    <!-- 关键结构与订单块明细 -->
+    <section class="section" id="sec-ydw-levels">
+      <div class="sec-header">
+        <div class="sec-title-wrap">
+          <div class="sec-bar" style="background:var(--blue)"></div>
+          <div>
+            <h2 class="sec-title">SMC 关键结构事件、活跃订单块（OB）与公允缺口（FVG）明细</h2>
+            <div class="sec-subtitle">显式列示未失效的订单块价格区间、未回补 FVG 以及最近波段/内部结构突破记录，便于复盘与关键位对照</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="two-col">
+        <div class="sub-panel">
+          <div class="sub-panel-head">
+            <h3>活跃订单块（OB）与未回补 FVG</h3>
+            <span class="code-tag">High/Low 口径失效移除</span>
+          </div>
+          <div class="tbl-wrap">
+            <table id="ydwZonesTable">
+              <thead>
+                <tr>
+                  <th class="l">类型</th>
+                  <th class="l">层级/方向</th>
+                  <th>区间下沿</th>
+                  <th>区间上沿</th>
+                  <th>锚定日</th>
+                  <th>生成日</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="sub-panel">
+          <div class="sub-panel-head">
+            <h3>近期结构突破记录（BOS / CHoCH）</h3>
+            <span class="code-tag">收盘价突破触发</span>
+          </div>
+          <div class="tbl-wrap">
+            <table id="ydwEventsTable">
+              <thead>
+                <tr>
+                  <th class="l">层级</th>
+                  <th class="l">信号</th>
+                  <th>突破日期</th>
+                  <th>被破支点日</th>
+                  <th>关键价位</th>
+                  <th>当日收盘</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 口径与防未来函数说明 -->
+    <section class="section" id="sec-ydw-method">
+      <div class="sec-header">
+        <div class="sec-title-wrap">
+          <div class="sec-bar" style="background:var(--sub)"></div>
+          <div>
+            <h2 class="sec-title">数据口径与 SMC 防未来函数提示</h2>
+            <div class="sec-subtitle">基于 simonlin1212/a-stock-data V3.10.4 数据校准规范与 LuxAlgo SMC 技术分析框架</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="method-grid">
+        <div class="method-card">
+          <h4>一、科创板量价与估值校准口径</h4>
+          <p>燕东微（<code>688172.SH</code>）为科创板标的，腾讯日K原始成交量单位为<b>「股」</b>（主板/创业板为「手」），本页已自动按「万股」换算；实时估值快照严格区分总市值（<code>f[45]</code>）、流通市值（<code>f[44]</code>）、PB（<code>f[46]</code>）与振幅%（<code>f[43]</code>），避免限售股导致的市值错判。</p>
+        </div>
+        <div class="method-card">
+          <h4>二、SMC 双层结构与订单块规则</h4>
+          <p><b>波段结构（L=10，实线）</b>刻画主趋势方向，<b>内部结构（L=3，虚线）</b>捕捉局部反弹/回撤；均按收盘价突破触发 <b>BOS（延续）</b> / <b>CHoCH（转向）</b>。订单块采用波动率过滤筛选并在价格最高/最低价越界时自动失效移除；折溢价区仅为区间中轴分位，不代表基本面估值。</p>
+        </div>
+        <div class="method-card">
+          <h4>三、复盘防未来函数（Anti-Repainting）</h4>
+          <p>分形高低点存在 <code>L</code> 个交易日确认滞后，订单块在结构突破日（上表“生成日”）才确立并向左锚定至“锚定日”，<b>切勿将订单块左端当作当时已知的实时买点</b>；<code>Weak Low</code> 仅表示偏空结构中顺势受挑战的低点角色，不等于底部已确认。</p>
+        </div>
+      </div>
+    </section>
+
+    <footer class="footer">
+      数据来源：腾讯财经（三入口轮换前复权日K + 实时估值快照）　·　本页面仅用于个人投研与技术指标复盘，不构成任何投资建议
+    </footer>
+  </main>
+
+  <div class="toast" id="toast"></div>
+  <script src="data/dashboard_data.js"></script>
+  <script src="assets/app.js"></script>
+</body>
+</html>

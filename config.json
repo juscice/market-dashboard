@@ -1,0 +1,150 @@
+{
+  "dashboard_title": "A股与大类资产每日投研监控看板",
+  "timezone": "Asia/Shanghai",
+  "schedule_note": "交易日 23:05 自动更新（待上交所/深交所ETF份额与中证全收益指数收盘归档后）",
+  "convergence": {
+    "base_date": "2004-12-31",
+    "csi300_tri_code": "H00300",
+    "csi_bond_fund_code": "H11023",
+    "csi_mixed_fund_code": "H11022",
+    "bond_weight": 0.82,
+    "mixed_weight": 0.18,
+    "episode_merge_gap_days": 45,
+    "wind_885007_annual_anchors": {
+      "2005": 0.0907,
+      "2006": 0.2580,
+      "2007": 0.3820,
+      "2008": 0.1152,
+      "2009": 0.1180,
+      "2010": 0.0720,
+      "2011": -0.0285,
+      "2012": 0.0810,
+      "2013": 0.0120,
+      "2014": 0.1920,
+      "2015": 0.1450,
+      "2016": -0.0050,
+      "2017": 0.0310,
+      "2018": -0.0220,
+      "2019": 0.1016,
+      "2020": 0.0912,
+      "2021": 0.0782,
+      "2022": -0.0507,
+      "2023": 0.0057,
+      "2024": 0.0490,
+      "2025": 0.0559
+    }
+  },
+  "national_team": {
+    "upstream_url": "https://etf.maomaoci-a.com/data/data.json",
+    "a_share_total_mcap_yi_fallback": 950000.0,
+    "etfs": [
+      {"code": "510300", "name": "沪深300ETF", "full": "华泰柏瑞沪深300ETF", "exch": "SH", "index": "沪深300", "gjd_note": "汇金系合计持约736亿份，占比82.8%（2025年报）"},
+      {"code": "510310", "name": "沪深300ETF易方达", "full": "易方达沪深300ETF发起式", "exch": "SH", "index": "沪深300", "gjd_note": "汇金重仓（2025年报持仓市值超1800亿元）"},
+      {"code": "510330", "name": "沪深300ETF华夏", "full": "华夏沪深300ETF", "exch": "SH", "index": "沪深300", "gjd_note": "汇金重仓（2025年报持仓市值超1300亿元）"},
+      {"code": "159919", "name": "沪深300ETF嘉实", "full": "嘉实沪深300ETF", "exch": "SZ", "index": "沪深300", "gjd_note": "汇金重仓（2025年报持仓市值超1200亿元）"},
+      {"code": "510050", "name": "上证50ETF", "full": "华夏上证50ETF", "exch": "SH", "index": "上证50", "gjd_note": "汇金重仓"},
+      {"code": "510180", "name": "上证180ETF", "full": "华安上证180ETF", "exch": "SH", "index": "上证180", "gjd_note": "汇金持仓"},
+      {"code": "510500", "name": "中证500ETF", "full": "南方中证500ETF", "exch": "SH", "index": "中证500", "gjd_note": "汇金重仓，2025上半年获增持"},
+      {"code": "512500", "name": "中证500ETF华夏", "full": "华夏中证500ETF", "exch": "SH", "index": "中证500", "gjd_note": "华夏-汇金资管计划2025下半年增持约4亿份"},
+      {"code": "512100", "name": "中证1000ETF", "full": "南方中证1000ETF", "exch": "SH", "index": "中证1000", "gjd_note": "汇金重仓，2025上半年获增持"},
+      {"code": "159845", "name": "中证1000ETF华夏", "full": "华夏中证1000ETF", "exch": "SZ", "index": "中证1000", "gjd_note": "汇金持仓，2025上半年获增持"},
+      {"code": "560010", "name": "中证1000ETF广发", "full": "广发中证1000ETF", "exch": "SH", "index": "中证1000", "gjd_note": "汇金持仓，2025上半年获增持"},
+      {"code": "159629", "name": "中证1000ETF富国", "full": "富国中证1000ETF", "exch": "SZ", "index": "中证1000", "gjd_note": "汇金持仓，2025上半年获增持"},
+      {"code": "588000", "name": "科创50ETF", "full": "华夏上证科创板50ETF", "exch": "SH", "index": "科创50", "gjd_note": "汇金重仓"},
+      {"code": "588080", "name": "科创板50ETF易方达", "full": "易方达上证科创板50ETF", "exch": "SH", "index": "科创50", "gjd_note": "汇金持仓，2025上半年获增持"},
+      {"code": "159915", "name": "创业板ETF", "full": "易方达创业板ETF", "exch": "SZ", "index": "创业板指", "gjd_note": "汇金持仓，2025上半年获增持"},
+      {"code": "159977", "name": "创业板ETF天弘", "full": "天弘创业板ETF", "exch": "SZ", "index": "创业板指", "gjd_note": "汇金投资2025下半年增持2.3亿份"}
+    ],
+    "baseline_fallback": {
+      "asof": "2025年年报（截至2025-12-31，2026年4月披露）",
+      "total_value_yi": 15400,
+      "note": "较2025年二季度末增加约2487亿元。宽基ETF为绝对主力：沪深300、上证50、中证1000、科创50等。",
+      "source": "Wind统计 / 21世纪经济报道 2026-04-09",
+      "holders": [
+        {"name": "中央汇金投资", "etf_count": 21, "shares_yi": 1974, "value_yi": 7973, "avg_pct": 36.19},
+        {"name": "中央汇金资管", "etf_count": 15, "shares_yi": 1785, "value_yi": 7290, "avg_pct": 38.01},
+        {"name": "易方达-汇金资管单一资管计划", "etf_count": 9, "shares_yi": 43, "value_yi": 71, "avg_pct": 5.27},
+        {"name": "华夏-汇金资管单一资管计划", "etf_count": 17, "shares_yi": 37, "value_yi": 60, "avg_pct": 4.74},
+        {"name": "中国诚通（含北京诚通金控）", "etf_count": 21, "shares_yi": 21, "value_yi": 33, "avg_pct": null},
+        {"name": "国新投资（中国国新旗下）", "etf_count": 3, "shares_yi": 12, "value_yi": 13, "avg_pct": 19.55}
+      ]
+    }
+  },
+  "technical_assets": {
+    "star50": {
+      "title": "科创50指数",
+      "code": "sh000688",
+      "display_code": "000688.SH",
+      "source": "tencent",
+      "asset_type": "index",
+      "price_unit": "点",
+      "volume_unit": "手",
+      "count": 520,
+      "decimals": 2
+    },
+    "cyb50": {
+      "title": "创业板50指数",
+      "code": "sz399673",
+      "display_code": "399673.SZ",
+      "source": "tencent",
+      "asset_type": "index",
+      "price_unit": "点",
+      "volume_unit": "手",
+      "count": 520,
+      "decimals": 2
+    },
+    "gold_au0": {
+      "title": "沪金主力连续 (AU0)",
+      "code": "AU0",
+      "display_code": "SHFE:AU0",
+      "source": "sina_futures",
+      "asset_type": "futures",
+      "price_unit": "元/克",
+      "volume_unit": "手",
+      "count": 520,
+      "decimals": 2
+    },
+    "gold_sge": {
+      "title": "上海金现货 (Au99.99)",
+      "code": "Au99.99",
+      "display_code": "SGE:Au99.99",
+      "source": "sge",
+      "asset_type": "spot",
+      "price_unit": "元/克",
+      "volume_unit": "",
+      "count": 520,
+      "decimals": 2
+    },
+    "gold_etf": {
+      "title": "华安黄金ETF",
+      "code": "sh518880",
+      "display_code": "518880.SH",
+      "source": "tencent",
+      "asset_type": "etf",
+      "price_unit": "元",
+      "volume_unit": "手",
+      "count": 520,
+      "decimals": 3
+    },
+    "yandongwei": {
+      "title": "燕东微",
+      "code": "sh688172",
+      "display_code": "688172.SH",
+      "source": "tencent",
+      "asset_type": "stock_star",
+      "price_unit": "元",
+      "volume_unit": "股",
+      "count": 520,
+      "decimals": 2
+    }
+  },
+  "smc_params": {
+    "swing_length": 10,
+    "internal_length": 3,
+    "atr_period": 14,
+    "eq_atr_factor": 0.15,
+    "fvg_min_gap_atr": 0.15,
+    "max_active_ob": 6,
+    "max_active_fvg": 6
+  }
+}
