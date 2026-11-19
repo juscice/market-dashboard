@@ -27,8 +27,9 @@
         <a href="#sec-ydw">日K + SMC走势</a>
         <a href="#sec-ydw-levels">关键结构与订单块</a>
         <a href="#sec-ydw-method">口径与风险提示</a>
+        <button type="button" class="refresh-btn" id="autoPollBtn" title="开启或关闭每 60 秒自动拉取实时行情">⏱ 自动60s: 关</button>
         <button type="button" class="refresh-btn" id="shareBtn" title="复制页面链接分享给他人">🔗 分享链接</button>
-        <button type="button" class="refresh-btn" id="refreshBtn" title="刷新最新看板数据">↻ 刷新数据</button>
+        <button type="button" class="refresh-btn" id="refreshBtn" title="立即直连拉取最新实时行情">↻ 实时刷新</button>
       </nav>
     </div>
   </header>
@@ -150,6 +151,7 @@
 
   <div class="toast" id="toast"></div>
   <script src="data/dashboard_data.js"></script>
+  <script src="assets/live_engine.js"></script>
   <script src="assets/app.js"></script>
 </body>
 </html>

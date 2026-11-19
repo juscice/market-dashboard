@@ -30,8 +30,9 @@
         <a href="#sec-cyb50">4. 创业板50</a>
         <a href="#sec-gold">5. 黄金</a>
         <a href="#sec-method">方案与口径</a>
+        <button type="button" class="refresh-btn" id="autoPollBtn" title="开启或关闭每 60 秒自动拉取实时行情">⏱ 自动60s: 关</button>
         <button type="button" class="refresh-btn" id="shareBtn" title="复制页面链接分享给他人">🔗 分享链接</button>
-        <button type="button" class="refresh-btn" id="refreshBtn" title="刷新最新看板数据">↻ 刷新数据</button>
+        <button type="button" class="refresh-btn" id="refreshBtn" title="立即直连拉取最新实时行情">↻ 实时刷新</button>
       </nav>
     </div>
   </header>
@@ -264,6 +265,7 @@
 
   <div class="toast" id="toast"></div>
   <script src="data/dashboard_data.js"></script>
+  <script src="assets/live_engine.js"></script>
   <script src="assets/app.js"></script>
 </body>
 </html>

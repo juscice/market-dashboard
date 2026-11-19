@@ -66,18 +66,20 @@
     toastTimer = setTimeout(() => el.classList.remove("show"), 2600);
   }
 
+  let BASE_DATA = null;
   let canServerRefresh = false;
+  let liveSyncInFlight = false;
+  let autoPollTimer = null;
   const isFileMode = location.protocol === "file:";
   const isLocalHost = ["127.0.0.1", "localhost", "::1"].includes(location.hostname);
+  const PAGE_MODE = (document.body && document.body.dataset && document.body.dataset.page) || "market";
 
   async function detectHostCapabilities() {
-    const refreshBtn = $("refreshBtn");
     const shareBtn = $("shareBtn");
     if (isFileMode) {
-      if (refreshBtn) refreshBtn.style.display = "none";
       if (shareBtn) {
-        shareBtn.textContent = "📄 离线快照";
-        shareBtn.title = "当前为单文件离线快照，可直接转发给他人双击浏览器打开";
+        shareBtn.textContent = "📄 单文件版";
+        shareBtn.title = "当前为单文件网页，联网时同样支持自动拉取实时行情";
       }
       return;
     }
@@ -86,13 +88,7 @@
         const r = await fetch("/api/status", { cache: "no-store" });
         if (r.ok) {
           const st = await r.json();
-          if (st && st.can_refresh) {
-            canServerRefresh = true;
-            if (refreshBtn) {
-              refreshBtn.textContent = "↻ 抓取最新";
-              refreshBtn.title = "调用本地后端重新抓取全量最新行情";
-            }
-          }
+          if (st && st.can_refresh) canServerRefresh = true;
         }
       } catch (_) {
         canServerRefresh = false;
@@ -100,23 +96,60 @@
     }
   }
 
+  async function runLiveSync(silent = false) {
+    if (!BASE_DATA || !window.LiveMarketEngine || liveSyncInFlight) return false;
+    liveSyncInFlight = true;
+    const btn = $("refreshBtn");
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = "同步中…";
+    }
+    try {
+      const updated = await window.LiveMarketEngine.syncLiveMarketData(BASE_DATA, PAGE_MODE);
+      DATA = updated;
+      renderAll(DATA);
+      const ls = DATA.meta && DATA.meta.live_sync;
+      if (!silent && ls && ls.ok) {
+        showToast(`实时行情已同步（${ls.synced_at.slice(11)} · ${ls.synced_items.length}项直连）`);
+      }
+      return !!(ls && ls.ok);
+    } catch (err) {
+      if (!silent) showToast("实时拉取受限，已展示最新归档基线");
+      return false;
+    } finally {
+      liveSyncInFlight = false;
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = "↻ 实时刷新";
+      }
+    }
+  }
+
   async function loadDashboard() {
     hideBanner();
-    // 1. Offline / file:// single-file mode uses embedded window.__DASHBOARD_DATA__
+    // 1. Fast first paint from static baseline (file:// or HTTP JSON)
     if (isFileMode && window.__DASHBOARD_DATA__) {
-      DATA = window.__DASHBOARD_DATA__;
+      BASE_DATA = window.__DASHBOARD_DATA__;
+      DATA = BASE_DATA;
       renderAll(DATA);
+      // Still attempt live browser sync when online!
+      await runLiveSync(true);
       return;
     }
     try {
       const resp = await fetch("data/dashboard_data.json?t=" + Date.now(), { cache: "no-store" });
       if (!resp.ok) throw new Error("HTTP " + resp.status);
-      DATA = await resp.json();
+      BASE_DATA = await resp.json();
+      DATA = BASE_DATA;
       renderAll(DATA);
+      // 2. Automatically sync real-time quotes, K-lines, and SMC live in browser on EVERY page open!
+      await runLiveSync(true);
     } catch (err) {
       if (window.__DASHBOARD_DATA__) {
-        DATA = window.__DASHBOARD_DATA__;
+        BASE_DATA = window.__DASHBOARD_DATA__;
+        DATA = BASE_DATA;
         renderAll(DATA);
+        await runLiveSync(true);
         return;
       }
       const msg =
@@ -126,16 +159,36 @@
     }
   }
 
+  // Auto 60s polling toggle
+  if ($("autoPollBtn")) {
+    $("autoPollBtn").addEventListener("click", () => {
+      const btn = $("autoPollBtn");
+      if (autoPollTimer) {
+        clearInterval(autoPollTimer);
+        autoPollTimer = null;
+        btn.classList.remove("active");
+        btn.textContent = "⏱ 自动60s: 关";
+        showToast("已关闭每 60 秒自动实时刷新");
+      } else {
+        autoPollTimer = setInterval(() => runLiveSync(true), 60000);
+        btn.classList.add("active");
+        btn.textContent = "⏱ 自动60s: 开";
+        showToast("已开启每 60 秒自动实时刷新");
+        runLiveSync(false);
+      }
+    });
+  }
+
   // Share link button
   if ($("shareBtn")) {
     $("shareBtn").addEventListener("click", async () => {
       if (isFileMode) {
-        showToast("当前为独立离线快照文件，可直接发送该 HTML 给他人打开");
+        showToast("当前为独立单文件网页，可直接转发给他人双击打开（联网自动实时更新）");
         return;
       }
       const shareUrl = location.href.split("#")[0];
       if (isLocalHost) {
-        showToast("当前为本机预览地址；如需公开分享，请部署至 GitHub Pages 或运行 python serve.py 8080 --lan");
+        showToast("当前为本机预览地址；请分享公网 GitHub Pages 链接");
         return;
       }
       try {
@@ -156,36 +209,14 @@
     });
   }
 
-  // Manual refresh button (only POSTs /api/refresh when local serve.py confirms capability)
+  // Manual live refresh button: pulls live market feeds directly in browser in <1.5s!
   $("refreshBtn").addEventListener("click", async () => {
-    const btn = $("refreshBtn");
-    const origText = btn.textContent;
-    btn.disabled = true;
-    btn.textContent = canServerRefresh ? "抓取中…" : "刷新中…";
-    try {
-      if (canServerRefresh) {
-        const r = await fetch("/api/refresh", { method: "POST" });
-        if (r.ok) {
-          const res = await r.json();
-          if (!res.ok) {
-            showBanner("后端刷新返回告警：" + (res.error || "未知错误"), true);
-          } else {
-            showToast("已完成最新行情抓取与页面刷新");
-          }
-        }
-      } else {
-        showToast("已重新加载最新静态快照数据");
-      }
-    } catch (_) {
-      showToast("刷新失败，请检查网络连接");
-    } finally {
-      await loadDashboard();
-      btn.disabled = false;
-      btn.textContent = origText;
+    if (BASE_DATA && window.LiveMarketEngine) {
+      await runLiveSync(false);
+      return;
     }
+    await loadDashboard();
   });
-
-  const PAGE_MODE = (document.body && document.body.dataset && document.body.dataset.page) || "market";
 
   function renderAll(D) {
     // Clear previous chart registry
@@ -201,9 +232,16 @@
     }
     const statusVals = Object.values(D.meta.status || {});
     const allOk = statusVals.every((s) => s.ok);
-    $("metaLine").innerHTML =
-      `<span class="status-dot ${allOk ? "" : "warn"}"></span>` +
-      `更新：<b class="num">${D.meta.updated_at}</b>　|　最新行情：<b class="num">${D.meta.latest_market_date}</b>　|　每日 23:05 自动更新`;
+    const ls = D.meta.live_sync;
+    if (ls && ls.ok) {
+      $("metaLine").innerHTML =
+        `<span class="status-dot live"></span>` +
+        `实时直连：<b class="num">${ls.synced_at}</b>　|　最新行情：<b class="num">${D.meta.latest_market_date}</b>　|　每次打开自动更新`;
+    } else {
+      $("metaLine").innerHTML =
+        `<span class="status-dot ${allOk ? "" : "warn"}"></span>` +
+        `基线：<b class="num">${D.meta.updated_at}</b>　|　最新行情：<b class="num">${D.meta.latest_market_date}</b>　|　正在直连实时行情…`;
+    }
 
     if (!allOk) {
       const warns = statusVals.filter((s) => !s.ok).map((s) => s.note).join("；");
@@ -522,7 +560,7 @@
     const dates = G.dates;
     const agg = G.aggregate;
     $("gjdDateBadge").textContent =
-      `最新交易日：${G.latest_date}（监控 ${S.etf_count} 只宽基ETF${G.sse_verified_date ? " · 上交所已直连核验" : ""}）`;
+      `份额截至：${G.latest_date}（${S.etf_count}只宽基ETF${G.live_price_synced ? " · 价格/规模已实时直连" : G.sse_verified_date ? " · 上交所已核验" : ""}）`;
 
     $("gjdStats").innerHTML = [
       ["监控组合总份额", fmt(S.total_shares_yi, 2) + " 亿份", `较上日 ${fmt(S.d_total_shares_yi, 2, true)} 亿份`, cls(S.d_total_shares_yi)],

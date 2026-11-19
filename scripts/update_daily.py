@@ -472,6 +472,13 @@ def build_single_file_snapshot(root_dir: Path, template_name: str, out_name: str
         '<script src="data/dashboard_data.js"></script>',
         f"<script>window.__DASHBOARD_DATA__={safe_json};</script>",
     )
+    live_engine_path = root_dir / "assets" / "live_engine.js"
+    if live_engine_path.exists():
+        live_src = live_engine_path.read_text(encoding="utf-8").replace("</script>", "<\\/script>")
+        html_out = html_out.replace(
+            '<script src="assets/live_engine.js"></script>',
+            f"<script>\n{live_src}\n</script>",
+        )
     html_out = html_out.replace(
         '<script src="assets/app.js"></script>',
         f"<script>\n{safe_app}\n</script>",
