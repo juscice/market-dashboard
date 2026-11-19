@@ -630,16 +630,27 @@
     });
   }
 
-  async function fetchSinaFuturesKline(symbol = "AU0", count = 520) {
-    const varName = "__SINA_FUT_" + symbol + "_" + Math.floor(Math.random() * 100000);
-    const url = `https://stock2.finance.sina.com.cn/futures/api/jsonp.php/window.${varName}=/InnerFuturesNewService.getDailyKLine?symbol=${encodeURIComponent(symbol)}&_=${Date.now()}`;
+  async function fetchSinaGlobalFuturesKline(symbol = "XAU", count = 520) {
+    const varName = "__SINA_GFUT_" + symbol + "_" + Math.floor(Math.random() * 100000);
+    const url = `https://stock2.finance.sina.com.cn/futures/api/jsonp.php/window.${varName}=/GlobalFuturesService.getGlobalFuturesDailyKLine?symbol=${encodeURIComponent(symbol)}&_=${Date.now()}`;
     const arr = await loadJsonpVar(url, varName, 9000);
     try { delete global[varName]; } catch (_) {}
     const bars = [];
     for (const r of arr) {
-      const o = Number(r.o), h = Number(r.h), l = Number(r.l), c = Number(r.c);
+      const o = Number(r.open ?? r.o ?? 0);
+      const h = Number(r.high ?? r.h ?? 0);
+      const l = Number(r.low ?? r.l ?? 0);
+      const c = Number(r.close ?? r.c ?? 0);
       if (Math.min(o, h, l, c) <= 0) continue;
-      bars.push({ date: String(r.d), open: o, high: h, low: l, close: c, volume: Number(r.v || 0) });
+      const vol = Number(r.volume ?? r.v ?? 0);
+      bars.push({
+        date: String(r.date ?? r.d),
+        open: o,
+        high: Math.max(h, o, c),
+        low: Math.min(l, o, c),
+        close: c,
+        volume: vol > 0 ? vol : null,
+      });
     }
     bars.sort((a, b) => a.date.localeCompare(b.date));
     return bars.length > count ? bars.slice(-count) : bars;
@@ -760,30 +771,30 @@
     } else {
       // Market 5-item dashboard: fetch all live feeds in parallel!
       const etfCodes = (D.national_team && D.national_team.etfs ? D.national_team.etfs.map((e) => e.code) : []);
-      const quoteCodes = ["sh000300", "sh000688", "sz399673", "sh518880", ...etfCodes];
+      const quoteCodes = ["sh000300", "sh000688", "sz399673", "sh517520", "sh518880", ...etfCodes];
 
       const [
         quotesRes,
         star50Res,
         cyb50Res,
+        goldStockEtfRes,
         goldEtfRes,
         csi300Res,
-        goldAu0Res,
-        goldSgeRes,
-        emGoldQRes,
+        goldXauRes,
+        emXauQRes,
       ] = await Promise.allSettled([
         fetchTencentQuotes(quoteCodes),
         fetchTencentKline("sh000688", 520, "qfq"),
         fetchTencentKline("sz399673", 520, "qfq"),
+        fetchTencentKline("sh517520", 520, "qfq"),
         fetchTencentKline("sh518880", 520, "qfq"),
         fetchTencentKline("sh000300", 60, ""),
-        fetchSinaFuturesKline("AU0", 520),
-        fetchEastmoneyKline("118.AU9999", 520),
-        fetchEastmoneyQuotes(["113.aum", "118.AU9999"]),
+        fetchSinaGlobalFuturesKline("XAU", 520),
+        fetchEastmoneyQuotes(["122.XAU"]),
       ]);
 
       const tq = quotesRes.status === "fulfilled" ? quotesRes.value : {};
-      const emGoldQ = emGoldQRes.status === "fulfilled" ? emGoldQRes.value : {};
+      const emXauQ = emXauQRes.status === "fulfilled" ? emXauQRes.value : {};
 
       // 1. Update Module 1 (沪深300全收益 tail extension via live sh000300 daily returns)
       if (csi300Res.status === "fulfilled" && D.convergence && D.convergence.dates.length) {
@@ -895,43 +906,38 @@
         failed.push("创业板50");
       }
 
-      // 5A. Update Module 5 (沪金主连 AU0 via Sina JSONP + EastMoney live night/day quote)
-      if (goldAu0Res.status === "fulfilled") {
-        const prev = D.technical.gold_au0.meta;
-        let bars = goldAu0Res.value;
-        const qAu = emGoldQ.aum;
-        if (qAu && qAu.price > 0) {
-          // If night session or intraday is active, update latest candle
+      // 5A. Update Module 5 (伦敦金现 XAU/USD via Sina Global JSONP + EastMoney 122.XAU live quote)
+      if (goldXauRes.status === "fulfilled") {
+        const prev = D.technical.gold_xau.meta;
+        let bars = goldXauRes.value;
+        const qXau = emXauQ.XAU;
+        if (qXau && qXau.price > 0) {
           const todayStr = syncTime.slice(0, 10);
-          bars = mergeIntradayBar(bars, { ...qAu, quote_date: bars[bars.length - 1].date >= todayStr ? bars[bars.length - 1].date : todayStr });
+          bars = mergeIntradayBar(bars, { ...qXau, quote_date: bars[bars.length - 1].date >= todayStr ? bars[bars.length - 1].date : todayStr });
         }
-        D.technical.gold_au0 = analyzeTechnicalSeries(bars, { ...prev, source: "新浪期货 + 东财盘中实时直连" }, prev.decimals);
-        if (qAu && Number.isFinite(qAu.change_pct)) {
-          D.technical.gold_au0.summary.change_pct = roundOpt(qAu.change_pct, 2);
+        D.technical.gold_xau = analyzeTechnicalSeries(bars, { ...prev, source: "新浪外盘 + 伦敦金现实时直连" }, prev.decimals);
+        if (qXau && Number.isFinite(qXau.change_pct)) {
+          D.technical.gold_xau.summary.change_pct = roundOpt(qXau.change_pct, 2);
         }
-        synced.push("沪金AU0实时");
+        synced.push("伦敦金现实时");
       } else {
-        failed.push("沪金AU0");
+        failed.push("伦敦金现");
       }
 
-      // 5B. Update Module 5 (上海金 Au99.99 via EastMoney CORS)
-      if (goldSgeRes.status === "fulfilled") {
-        const prev = D.technical.gold_sge.meta;
-        let bars = goldSgeRes.value;
-        const qSge = emGoldQ.AU9999;
-        if (qSge && qSge.price > 0) {
-          bars = mergeIntradayBar(bars, { ...qSge, quote_date: bars[bars.length - 1].date });
+      // 5B. Update Module 5 (黄金股ETF sh517520)
+      if (goldStockEtfRes.status === "fulfilled") {
+        const prev = D.technical.gold_stock_etf.meta;
+        const merged = mergeIntradayBar(goldStockEtfRes.value, tq.sh517520);
+        D.technical.gold_stock_etf = analyzeTechnicalSeries(merged, { ...prev, source: "腾讯财经实时直连 (前复权)" }, prev.decimals);
+        if (tq.sh517520 && Number.isFinite(tq.sh517520.change_pct)) {
+          D.technical.gold_stock_etf.summary.change_pct = roundOpt(tq.sh517520.change_pct, 2);
         }
-        D.technical.gold_sge = analyzeTechnicalSeries(bars, { ...prev, source: "上金所 Au99.99 实时直连" }, prev.decimals);
-        if (qSge && Number.isFinite(qSge.change_pct)) {
-          D.technical.gold_sge.summary.change_pct = roundOpt(qSge.change_pct, 2);
-        }
-        synced.push("上海金Au99.99实时");
+        synced.push("黄金股ETF实时");
       } else {
-        failed.push("上海金");
+        failed.push("黄金股ETF");
       }
 
-      // 5C. Update Module 5 (黄金ETF 518880)
+      // 5C. Update Module 5 (黄金ETF sh518880)
       if (goldEtfRes.status === "fulfilled") {
         const prev = D.technical.gold_etf.meta;
         const merged = mergeIntradayBar(goldEtfRes.value, tq.sh518880);
@@ -944,7 +950,7 @@
         failed.push("黄金ETF");
       }
 
-      const techDates = ["star50", "cyb50", "gold_au0", "gold_sge", "gold_etf"]
+      const techDates = ["star50", "cyb50", "gold_xau", "gold_stock_etf", "gold_etf"]
         .map((k) => D.technical[k] && D.technical[k].summary && D.technical[k].summary.latest_date)
         .filter(Boolean);
       if (techDates.length) {

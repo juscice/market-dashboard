@@ -236,11 +236,11 @@
     if (ls && ls.ok) {
       $("metaLine").innerHTML =
         `<span class="status-dot live"></span>` +
-        `实时直连：<b class="num">${ls.synced_at}</b>　|　最新行情：<b class="num">${D.meta.latest_market_date}</b>　|　每次打开自动更新`;
+        `实时直连：<b class="num">${ls.synced_at}</b>　|　最新行情：<b class="num">${D.meta.latest_market_date}</b>　|　每日 09:00 / 11:30 / 15:00 / 22:30 自动更新`;
     } else {
       $("metaLine").innerHTML =
         `<span class="status-dot ${allOk ? "" : "warn"}"></span>` +
-        `基线：<b class="num">${D.meta.updated_at}</b>　|　最新行情：<b class="num">${D.meta.latest_market_date}</b>　|　正在直连实时行情…`;
+        `基线：<b class="num">${D.meta.updated_at}</b>　|　最新行情：<b class="num">${D.meta.latest_market_date}</b>　|　每日 09:00 / 11:30 / 15:00 / 22:30 自动更新`;
     }
 
     if (!allOk) {
@@ -288,7 +288,7 @@
       },
       makeTechKpi("#sec-star50", "3. 科创50", t.star50),
       makeTechKpi("#sec-cyb50", "4. 创业板50", t.cyb50),
-      makeTechKpi("#sec-gold", "5. 沪金主连 AU0", t.gold_au0),
+      makeTechKpi("#sec-gold", "5. 伦敦金现 XAU", t.gold_xau),
     ];
 
     $("kpiStrip").innerHTML = cards
@@ -1339,23 +1339,24 @@
     }
   }
 
-  /* ==================== Module 4: Gold ==================== */
+  /* ==================== Module 5: Gold (伦敦金现 / 黄金股ETF / 黄金ETF) ==================== */
   function renderGold(T) {
-    let activeKey = "gold_au0";
+    let activeKey = "gold_xau";
     const state = { bars: 130, sub: "macd", ma: true, boll: false, structure: true, ob: true, fvg: true, pd: true, eq: true };
     const chGold = registerChart($("chart-gold"));
 
     function redraw() {
       const item = T[activeKey];
+      if (!item) return;
       renderTechHeader($("head-gold"), item);
       renderSmcRibbon($("ribbon-gold"), item);
       drawTechChart(chGold, item, state);
       const extraNote =
-        activeKey === "gold_au0"
-          ? "沪金主力连续（AU0）来自新浪期货日K接口，含成交量与持仓参考，主力换月日可能存在合约价差跳空。"
-          : activeKey === "gold_sge"
-          ? "上海金现货（Au99.99）直连上海黄金交易所官方日线接口，单位元/克；官方日线接口不含成交量列。"
-          : "华安黄金ETF（518880）来自腾讯财经前复权日K，反映场内可交易黄金份额走势。";
+        activeKey === "gold_xau"
+          ? "伦敦金现（XAU/USD）日K来自新浪外盘现货接口并实时叠加盘中最新报价，单位美元/盎司；国际现货无统一场内成交量列。"
+          : activeKey === "gold_stock_etf"
+          ? "黄金股ETF（永赢中证沪深港黄金产业股票ETF，517520.SH）来自腾讯财经前复权日K与实时行情，反映A/H黄金开采与冶炼产业链龙头弹性。"
+          : "黄金ETF（华安黄金ETF，518880.SH）来自腾讯财经前复权日K与实时行情，紧密跟踪国内现货黄金价格。";
       $("goldFootnote").innerHTML = `<b>黄金数据口径</b>：${extraNote} 当前标的区间：${item.meta.date_range[0]} 至 ${item.meta.date_range[1]}（共 ${item.meta.bar_count} 根日K）。`;
     }
 
@@ -1472,5 +1473,25 @@
     });
   });
 
-  detectHostCapabilities().finally(loadDashboard);
+  // Scheduled Beijing Time auto-refresh slots: 09:00, 11:30, 15:00, 22:30
+  const SCHEDULED_SLOTS = new Set(["09:00", "11:30", "15:00", "22:30"]);
+  let lastTriggeredSlot = "";
+  function startScheduledClockWatcher() {
+    setInterval(() => {
+      if (!window.LiveMarketEngine) return;
+      const cstNow = window.LiveMarketEngine.nowCstFull(); // YYYY-MM-DD HH:MM:SS
+      const slotKey = cstNow.slice(0, 16); // YYYY-MM-DD HH:MM
+      const hhmm = cstNow.slice(11, 16);
+      if (SCHEDULED_SLOTS.has(hhmm) && lastTriggeredSlot !== slotKey) {
+        lastTriggeredSlot = slotKey;
+        showToast(`到达定时节点（${hhmm}），正在自动更新最新行情…`);
+        loadDashboard();
+      }
+    }, 20000);
+  }
+
+  detectHostCapabilities().finally(() => {
+    loadDashboard();
+    startScheduledClockWatcher();
+  });
 })();

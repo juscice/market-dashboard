@@ -41,6 +41,10 @@ SINA_FUT_KLINE_URL = (
     "https://stock2.finance.sina.com.cn/futures/api/jsonp.php/var%20_{code}="
     "/InnerFuturesNewService.getDailyKLine"
 )
+SINA_GLOBAL_FUT_KLINE_URL = (
+    "https://stock2.finance.sina.com.cn/futures/api/jsonp.php/var%20_{code}="
+    "/GlobalFuturesService.getGlobalFuturesDailyKLine"
+)
 SSE_ETF_SHARES_URL = "https://query.sse.com.cn/commonQuery.do"
 SZSE_FUND_LIST_URL = "https://fund.szse.cn/api/report/ShowReport/data"
 
@@ -316,6 +320,45 @@ def sina_futures_kline(symbol: str = "AU0", count: int = 520) -> tuple[list[dict
             "close": c,
             "volume": vol,
             "open_interest": oi,
+        })
+    rows.sort(key=lambda r: r["date"])
+    if count and len(rows) > count:
+        rows = rows[-count:]
+    return rows, url
+
+
+def sina_global_futures_kline(symbol: str = "XAU", count: int = 520) -> tuple[list[dict[str, Any]], str]:
+    """新浪外盘现货/期货日K线（如 XAU 伦敦金现，美元/盎司）。"""
+    code = str(symbol).strip().upper()
+    url = SINA_GLOBAL_FUT_KLINE_URL.format(code=code)
+    resp = SESSION.get(
+        url,
+        params={"symbol": code},
+        headers={"Referer": "https://finance.sina.com.cn/"},
+        timeout=(12, 25),
+    )
+    resp.raise_for_status()
+    text = resp.content.decode("gbk", errors="replace")
+    m = re.search(rf"var _{re.escape(code)}=\((.*)\);?\s*$", text, re.S)
+    if not m:
+        raise RuntimeError(f"新浪外盘日K {code} 返回非预期 JSONP")
+    items = json.loads(m.group(1).strip())
+    rows = []
+    for r in items:
+        o = float(r.get("open") or r.get("o") or 0)
+        h = float(r.get("high") or r.get("h") or 0)
+        l = float(r.get("low") or r.get("l") or 0)
+        c = float(r.get("close") or r.get("c") or 0)
+        if min(o, h, l, c) <= 0:
+            continue
+        vol = float(r.get("volume") or r.get("v") or 0)
+        rows.append({
+            "date": str(r.get("date") or r.get("d")),
+            "open": o,
+            "high": max(h, o, c),
+            "low": min(l, o, c),
+            "close": c,
+            "volume": vol if vol > 0 else None,
         })
     rows.sort(key=lambda r: r["date"])
     if count and len(rows) > count:

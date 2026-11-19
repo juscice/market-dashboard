@@ -9,7 +9,7 @@
   <meta property="og:title" content="A股与大类资产每日投研监控看板" />
   <meta property="og:description" content="股债波动收敛 · 国家队宽基ETF份额 · 科创50 / 创业板50 / 黄金 日K + SMC聪明钱结构" />
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23141c2b'/%3E%3Cpath d='M6 22l6-7 5 4 9-11' stroke='%2360a5fa' stroke-width='3' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E" />
-  <link rel="stylesheet" href="assets/styles.css?v=2" />
+  <link rel="stylesheet" href="assets/styles.css?v=3" />
   <script src="assets/vendor/echarts.min.js"
           onerror="document.write('<script src=&quot;https://cdn.bootcdn.net/ajax/libs/echarts/5.5.0/echarts.min.js&quot;><\/script>')"></script>
 </head>
@@ -213,12 +213,12 @@
           <div class="sec-bar" style="background:var(--amber)"></div>
           <div>
             <h2 class="sec-title">5. 黄金技术分析走势图（日K + SMC聪明钱框架）</h2>
-            <div class="sec-subtitle">支持一键切换沪金主力连续（AU0，含成交量）、上海金现货（Au99.99，上金所官方）与华安黄金ETF（518880）</div>
+            <div class="sec-subtitle">支持一键切换伦敦金现（XAU/USD，美元/盎司）、黄金股ETF（517520.SH）与黄金ETF（518880.SH）</div>
           </div>
         </div>
         <div class="btn-group" id="goldSymbolGroup">
-          <button type="button" data-key="gold_au0" class="active">沪金主连 AU0</button>
-          <button type="button" data-key="gold_sge">上海金 Au99.99</button>
+          <button type="button" data-key="gold_xau" class="active">伦敦金现 XAU/USD</button>
+          <button type="button" data-key="gold_stock_etf">黄金股ETF 517520</button>
           <button type="button" data-key="gold_etf">黄金ETF 518880</button>
         </div>
       </div>
@@ -265,7 +265,7 @@
 
   <div class="toast" id="toast"></div>
   <script src="data/dashboard_data.js"></script>
-  <script src="assets/live_engine.js?v=2"></script>
-  <script src="assets/app.js?v=2"></script>
+  <script src="assets/live_engine.js?v=3"></script>
+  <script src="assets/app.js?v=3"></script>
 </body>
 </html>

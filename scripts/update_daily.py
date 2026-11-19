@@ -28,6 +28,7 @@ from data_sources import (
     now_cst_str,
     sge_spot_kline,
     sina_futures_kline,
+    sina_global_futures_kline,
     tencent_kline,
     tencent_quote,
 )
@@ -271,6 +272,9 @@ def build_technical_modules(cfg: dict[str, Any]) -> dict[str, Any]:
         elif src == "sina_futures":
             bars, url = sina_futures_kline(code, count=count)
             source_label = "新浪期货主力连续日K (SHFE)"
+        elif src == "sina_global_futures":
+            bars, url = sina_global_futures_kline(code, count=count)
+            source_label = "新浪外盘伦敦金现日K (XAU/USD)"
         else:
             raise ValueError(f"Unsupported source: {src}")
 

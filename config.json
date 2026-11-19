@@ -1,7 +1,7 @@
 {
   "dashboard_title": "A股与大类资产每日投研监控看板",
   "timezone": "Asia/Shanghai",
-  "schedule_note": "交易日 23:05 自动更新（待上交所/深交所ETF份额与中证全收益指数收盘归档后）",
+  "schedule_note": "每日 09:00 / 11:30 / 15:00 / 22:30 自动更新（打开即实时直连）",
   "convergence": {
     "base_date": "2004-12-31",
     "csi300_tri_code": "H00300",
@@ -93,30 +93,30 @@
       "count": 520,
       "decimals": 2
     },
-    "gold_au0": {
-      "title": "沪金主力连续 (AU0)",
-      "code": "AU0",
-      "display_code": "SHFE:AU0",
-      "source": "sina_futures",
-      "asset_type": "futures",
-      "price_unit": "元/克",
-      "volume_unit": "手",
-      "count": 520,
-      "decimals": 2
-    },
-    "gold_sge": {
-      "title": "上海金现货 (Au99.99)",
-      "code": "Au99.99",
-      "display_code": "SGE:Au99.99",
-      "source": "sge",
-      "asset_type": "spot",
-      "price_unit": "元/克",
+    "gold_xau": {
+      "title": "伦敦金现 (XAU/USD)",
+      "code": "XAU",
+      "display_code": "SPOT:XAU/USD",
+      "source": "sina_global_futures",
+      "asset_type": "spot_fx",
+      "price_unit": "美元/盎司",
       "volume_unit": "",
       "count": 520,
       "decimals": 2
     },
+    "gold_stock_etf": {
+      "title": "黄金股ETF (永赢)",
+      "code": "sh517520",
+      "display_code": "517520.SH",
+      "source": "tencent",
+      "asset_type": "etf",
+      "price_unit": "元",
+      "volume_unit": "手",
+      "count": 520,
+      "decimals": 3
+    },
     "gold_etf": {
-      "title": "华安黄金ETF",
+      "title": "黄金ETF (华安)",
       "code": "sh518880",
       "display_code": "518880.SH",
       "source": "tencent",
