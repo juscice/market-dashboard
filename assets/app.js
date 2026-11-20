@@ -255,7 +255,7 @@
       renderConvergence(D.convergence);
       renderNationalTeam(D.national_team);
       renderSingleTechSection("star50", D.technical.star50);
-      renderSingleTechSection("cyb50", D.technical.cyb50);
+      renderSingleTechSection("cyb", D.technical.cyb);
       renderGold(D.technical);
     }
   }
@@ -287,7 +287,7 @@
         subCls: cls(gs.flow_1d_yi),
       },
       makeTechKpi("#sec-star50", "3. 科创50", t.star50),
-      makeTechKpi("#sec-cyb50", "4. 创业板50", t.cyb50),
+      makeTechKpi("#sec-cyb", "4. 创业板指", t.cyb),
       makeTechKpi("#sec-gold", "5. 伦敦金现 XAU", t.gold_xau),
     ];
 

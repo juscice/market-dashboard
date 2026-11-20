@@ -4,12 +4,12 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>A股与大类资产每日投研监控看板</title>
-  <meta name="description" content="每日自动更新的多资产投研看板：沪深300全收益与二级债基波动收敛、国家队16只宽基ETF份额动向，以及科创50、创业板50、黄金日K与SMC聪明钱技术分析。" />
+  <meta name="description" content="每日自动更新的多资产投研看板：沪深300全收益与二级债基波动收敛、国家队16只宽基ETF份额动向，以及科创50、创业板指、黄金日K与SMC聪明钱技术分析。" />
   <meta property="og:type" content="website" />
   <meta property="og:title" content="A股与大类资产每日投研监控看板" />
-  <meta property="og:description" content="股债波动收敛 · 国家队宽基ETF份额 · 科创50 / 创业板50 / 黄金 日K + SMC聪明钱结构" />
+  <meta property="og:description" content="股债波动收敛 · 国家队宽基ETF份额 · 科创50 / 创业板指 / 黄金 日K + SMC聪明钱结构" />
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23141c2b'/%3E%3Cpath d='M6 22l6-7 5 4 9-11' stroke='%2360a5fa' stroke-width='3' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E" />
-  <link rel="stylesheet" href="assets/styles.css?v=3" />
+  <link rel="stylesheet" href="assets/styles.css?v=4" />
   <script src="assets/vendor/echarts.min.js"
           onerror="document.write('<script src=&quot;https://cdn.bootcdn.net/ajax/libs/echarts/5.5.0/echarts.min.js&quot;><\/script>')"></script>
 </head>
@@ -27,7 +27,7 @@
         <a href="#sec-convergence">1. 股债收敛</a>
         <a href="#sec-gjd">2. 国家队份额</a>
         <a href="#sec-star50">3. 科创50</a>
-        <a href="#sec-cyb50">4. 创业板50</a>
+        <a href="#sec-cyb">4. 创业板指</a>
         <a href="#sec-gold">5. 黄金</a>
         <a href="#sec-method">方案与口径</a>
         <button type="button" class="refresh-btn" id="autoPollBtn" title="开启或关闭每 60 秒自动拉取实时行情">⏱ 自动60s: 关</button>
@@ -186,24 +186,24 @@
       <div class="footnote" id="star50Footnote"></div>
     </section>
 
-    <!-- 项目 4：创业板50 技术分析 -->
-    <section class="section" id="sec-cyb50">
+    <!-- 项目 4：创业板指 技术分析 -->
+    <section class="section" id="sec-cyb">
       <div class="sec-header">
         <div class="sec-title-wrap">
           <div class="sec-bar" style="background:var(--teal)"></div>
           <div>
-            <h2 class="sec-title">4. 创业板50 技术分析走势图（399673.SZ · 日K + SMC聪明钱框架）</h2>
-            <div class="sec-subtitle">创业板核心权重指数日K行情、成交量、MACD/RSI 及双层 SMC 聪明钱市场结构</div>
+            <h2 class="sec-title">4. 创业板指 技术分析走势图（399006.SZ · 日K + SMC聪明钱框架）</h2>
+            <div class="sec-subtitle">创业板指数日K行情、成交量、MACD/RSI 及双层 SMC 聪明钱市场结构</div>
           </div>
         </div>
-        <div class="sec-date-badge num" id="cyb50DateBadge">数据日期：—</div>
+        <div class="sec-date-badge num" id="cybDateBadge">数据日期：—</div>
       </div>
 
-      <div class="toolbar" id="cyb50Toolbar"></div>
-      <div class="sub-panel-head" id="head-cyb50"></div>
-      <div class="smc-ribbon" id="ribbon-cyb50"></div>
-      <div class="chart-tech" id="chart-cyb50"></div>
-      <div class="footnote" id="cyb50Footnote"></div>
+      <div class="toolbar" id="cybToolbar"></div>
+      <div class="sub-panel-head" id="head-cyb"></div>
+      <div class="smc-ribbon" id="ribbon-cyb"></div>
+      <div class="chart-tech" id="chart-cyb"></div>
+      <div class="footnote" id="cybFootnote"></div>
     </section>
 
     <!-- 项目 5：黄金技术分析 -->
@@ -265,7 +265,7 @@
 
   <div class="toast" id="toast"></div>
   <script src="data/dashboard_data.js"></script>
-  <script src="assets/live_engine.js?v=3"></script>
-  <script src="assets/app.js?v=3"></script>
+  <script src="assets/live_engine.js?v=4"></script>
+  <script src="assets/app.js?v=4"></script>
 </body>
 </html>

@@ -771,12 +771,12 @@
     } else {
       // Market 5-item dashboard: fetch all live feeds in parallel!
       const etfCodes = (D.national_team && D.national_team.etfs ? D.national_team.etfs.map((e) => e.code) : []);
-      const quoteCodes = ["sh000300", "sh000688", "sz399673", "sh517520", "sh518880", ...etfCodes];
+      const quoteCodes = ["sh000300", "sh000688", "sz399006", "sh517520", "sh518880", ...etfCodes];
 
       const [
         quotesRes,
         star50Res,
-        cyb50Res,
+        cybRes,
         goldStockEtfRes,
         goldEtfRes,
         csi300Res,
@@ -785,7 +785,7 @@
       ] = await Promise.allSettled([
         fetchTencentQuotes(quoteCodes),
         fetchTencentKline("sh000688", 520, "qfq"),
-        fetchTencentKline("sz399673", 520, "qfq"),
+        fetchTencentKline("sz399006", 520, "qfq"),
         fetchTencentKline("sh517520", 520, "qfq"),
         fetchTencentKline("sh518880", 520, "qfq"),
         fetchTencentKline("sh000300", 60, ""),
@@ -893,17 +893,17 @@
         failed.push("科创50");
       }
 
-      // 4. Update Module 4 (创业板50)
-      if (cyb50Res.status === "fulfilled") {
-        const prev = D.technical.cyb50.meta;
-        const merged = mergeIntradayBar(cyb50Res.value, tq.sz399673);
-        D.technical.cyb50 = analyzeTechnicalSeries(merged, { ...prev, source: "腾讯财经实时直连" }, prev.decimals);
-        if (tq.sz399673 && Number.isFinite(tq.sz399673.change_pct)) {
-          D.technical.cyb50.summary.change_pct = roundOpt(tq.sz399673.change_pct, 2);
+      // 4. Update Module 4 (创业板指 sz399006)
+      if (cybRes.status === "fulfilled") {
+        const prev = D.technical.cyb.meta;
+        const merged = mergeIntradayBar(cybRes.value, tq.sz399006);
+        D.technical.cyb = analyzeTechnicalSeries(merged, { ...prev, source: "腾讯财经实时直连" }, prev.decimals);
+        if (tq.sz399006 && Number.isFinite(tq.sz399006.change_pct)) {
+          D.technical.cyb.summary.change_pct = roundOpt(tq.sz399006.change_pct, 2);
         }
-        synced.push("创业板50实时日K");
+        synced.push("创业板指实时日K");
       } else {
-        failed.push("创业板50");
+        failed.push("创业板指");
       }
 
       // 5A. Update Module 5 (伦敦金现 XAU/USD via Sina Global JSONP + EastMoney 122.XAU live quote)
@@ -950,7 +950,7 @@
         failed.push("黄金ETF");
       }
 
-      const techDates = ["star50", "cyb50", "gold_xau", "gold_stock_etf", "gold_etf"]
+      const techDates = ["star50", "cyb", "gold_xau", "gold_stock_etf", "gold_etf"]
         .map((k) => D.technical[k] && D.technical[k].summary && D.technical[k].summary.latest_date)
         .filter(Boolean);
       if (techDates.length) {

@@ -82,10 +82,10 @@
       "count": 520,
       "decimals": 2
     },
-    "cyb50": {
-      "title": "创业板50指数",
-      "code": "sz399673",
-      "display_code": "399673.SZ",
+    "cyb": {
+      "title": "创业板指",
+      "code": "sz399006",
+      "display_code": "399006.SZ",
       "source": "tencent",
       "asset_type": "index",
       "price_unit": "点",
