@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>黄金与美元/美债宏观实时投研看板</title>
+  <meta name="description" content="独立黄金实时投研看板：支持伦敦金现（XAU/USD）、黄金股ETF（517520.SH）、黄金ETF（518880.SH）日K + SMC聪明钱结构，并实时叠加美元指数（DXY）、美国10年期与2年期国债收益率走势图。" />
+  <meta property="og:type" content="website" />
+  <meta property="og:title" content="黄金与美元/美债宏观实时投研看板" />
+  <meta property="og:description" content="伦敦金现 XAU/USD · 黄金股ETF · 黄金ETF · 叠加美元指数与美债10Y/2Y收益率走势" />
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23141c2b'/%3E%3Cpath d='M6 22l6-7 5 4 9-11' stroke='%23f59e0b' stroke-width='3' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E" />
+  <link rel="stylesheet" href="assets/styles.css?v=6" />
+  <script src="assets/vendor/echarts.min.js"
+          onerror="document.write('<script src=&quot;https://cdn.bootcdn.net/ajax/libs/echarts/5.5.0/echarts.min.js&quot;><\/script>')"></script>
+</head>
+<body data-page="gold">
+  <header class="topbar">
+    <div class="topbar-inner">
+      <div class="brand">
+        <div class="brand-mark" style="background:linear-gradient(180deg, var(--amber) 0%, var(--ink) 100%);"></div>
+        <div>
+          <h1 id="pageTitle">黄金与美元/美债宏观实时投研看板</h1>
+          <div class="brand-meta" id="metaLine">正在直连拉取黄金、美元指数与美债收益率实时行情…</div>
+        </div>
+      </div>
+      <nav class="nav-links">
+        <a href="#sec-briefing" id="navBriefingLink">实时简报</a>
+        <a href="#sec-gold-main">黄金日K+宏观叠加</a>
+        <a href="#sec-gold-macro">美元与美债联动</a>
+        <a href="#sec-gold-levels">SMC关键结构</a>
+        <a href="#sec-gold-method">口径说明</a>
+        <span class="nav-divider"></span>
+        <button type="button" class="refresh-btn" id="shareBtn" title="复制页面链接分享给他人">🔗 分享链接</button>
+        <button type="button" class="refresh-btn primary" id="refreshBtn" title="立即直连拉取黄金、美元指数与美债收益率最新行情">↻ 实时刷新</button>
+      </nav>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <div class="banner" id="banner"></div>
+
+    <!-- 顶部 4 格核心宏观与金价 KPI -->
+    <section class="kpi-strip" id="goldKpiStrip"></section>
+
+    <!-- 黄金 + 美元/美债 实时投研简报（每次点开按最新行情即时生成） -->
+    <section class="briefing-sec" id="sec-briefing" style="display:none;">
+      <div class="briefing-banner gold-theme" id="briefingBanner">
+        <div>
+          <div class="briefing-title-row">
+            <span class="briefing-pill" id="briefingEditionPill">实时行情动态生成</span>
+            <h2>黄金 × 美元 × 美债 实时波浪与宏观简报</h2>
+          </div>
+          <div class="briefing-headline" id="briefingHeadline">正在根据最新金价、美元指数与美债收益率生成简报…</div>
+        </div>
+        <div class="briefing-actions">
+          <button type="button" class="briefing-btn" id="refreshBriefingBtn" title="按最新实时行情重新生成简报">↻ 重新生成</button>
+          <button type="button" class="briefing-btn" id="copyBriefingBtn">📋 复制简报</button>
+          <button type="button" class="briefing-btn" id="toggleBriefingBtn">展开简报</button>
+        </div>
+      </div>
+      <div class="briefing-body" id="briefingBody" style="display:none;">
+        <div class="briefing-grid cols-3" id="briefingGrid"></div>
+        <div class="briefing-foot" id="briefingFoot"></div>
+      </div>
+    </section>
+
+    <!-- 模块 1：黄金技术分析主图 + 美元指数 / 美债10Y / 美债2Y 收益率直接叠加 -->
+    <section class="section" id="sec-gold-main">
+      <div class="sec-header">
+        <div class="sec-title-wrap">
+          <div class="sec-bar" style="background:var(--amber)"></div>
+          <div>
+            <h2 class="sec-title">1. 黄金日K技术分析 + 美元指数 / 美债收益率叠加走势图</h2>
+            <div class="sec-subtitle">支持一键切换伦敦金现（XAU/USD）、黄金股ETF（517520.SH）与黄金ETF（518880.SH），同图叠加美元指数（DXY）及美国10年期、2年期国债收益率</div>
+          </div>
+        </div>
+        <div class="btn-group" id="goldSymbolGroup">
+          <button type="button" data-key="gold_xau" class="active">伦敦金现 XAU/USD</button>
+          <button type="button" data-key="gold_stock_etf">黄金股ETF 517520</button>
+          <button type="button" data-key="gold_etf">黄金ETF 518880</button>
+        </div>
+      </div>
+
+      <div class="toolbar" id="goldToolbar"></div>
+      <div class="sub-panel-head" id="head-gold"></div>
+      <div class="smc-ribbon" id="ribbon-gold"></div>
+      <div class="chart-tech" style="height:580px;" id="chart-gold"></div>
+      <div class="footnote" id="goldFootnote"></div>
+    </section>
+
+    <!-- 模块 2：黄金 × 美元指数 × 美国10Y/2Y国债收益率 专属联动分析 -->
+    <section class="section" id="sec-gold-macro">
+      <div class="sec-header">
+        <div class="sec-title-wrap">
+          <div class="sec-bar" style="background:var(--blue)"></div>
+          <div>
+            <h2 class="sec-title">2. 美元指数（DXY）与美国 10年期 / 2年期国债收益率联动走势</h2>
+            <div class="sec-subtitle">直观对照黄金价格、美元指数、美国10年期与2年期国债收益率走势及 10Y−2Y 期限利差（bp）</div>
+          </div>
+        </div>
+        <div class="sec-date-badge num" id="goldMacroDateBadge">宏观数据日期：—</div>
+      </div>
+
+      <div class="stat-row" id="goldMacroStats"></div>
+
+      <div class="toolbar">
+        <div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;">
+          <div class="btn-group" id="goldMacroRangeGroup">
+            <button type="button" data-bars="65">近3月</button>
+            <button type="button" data-bars="130" class="active">近6月</button>
+            <button type="button" data-bars="250">近1年</button>
+            <button type="button" data-bars="0">全部</button>
+          </div>
+          <div class="btn-group" id="goldMacroModeGroup">
+            <button type="button" data-mode="raw" class="active">多轴原值叠加</button>
+            <button type="button" data-mode="norm">区间涨跌幅归一化(%)</button>
+          </div>
+        </div>
+        <div class="toggle-pills">
+          <button type="button" class="pill accent-inv" id="toggleMacroInvert">美元/美债反向坐标轴（对照负相关）</button>
+        </div>
+      </div>
+
+      <div class="chart-lg" id="chartGoldMacro"></div>
+      <div class="chart-sm" id="chartYieldSpread"></div>
+      <div class="footnote" id="goldMacroFootnote"></div>
+    </section>
+
+    <!-- 模块 3：SMC 关键结构与订单块明细 -->
+    <section class="section" id="sec-gold-levels">
+      <div class="sec-header">
+        <div class="sec-title-wrap">
+          <div class="sec-bar" style="background:var(--purple)"></div>
+          <div>
+            <h2 class="sec-title">3. 黄金 SMC 关键结构事件、活跃订单块（OB）与公允缺口（FVG）明细</h2>
+            <div class="sec-subtitle">随上方切换标的（XAU/USD、517520、518880）实时联动更新，显式列示未失效订单块与近期结构突破记录</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="two-col">
+        <div class="sub-panel">
+          <div class="sub-panel-head">
+            <h3>活跃订单块（OB）与未回补 FVG</h3>
+            <span class="code-tag">High/Low 口径失效移除</span>
+          </div>
+          <div class="tbl-wrap">
+            <table id="goldZonesTable">
+              <thead>
+                <tr>
+                  <th class="l">类型</th>
+                  <th class="l">层级/方向</th>
+                  <th>区间下沿</th>
+                  <th>区间上沿</th>
+                  <th>锚定日</th>
+                  <th>生成日</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="sub-panel">
+          <div class="sub-panel-head">
+            <h3>近期结构突破记录（BOS / CHoCH）</h3>
+            <span class="code-tag">收盘价突破触发</span>
+          </div>
+          <div class="tbl-wrap">
+            <table id="goldEventsTable">
+              <thead>
+                <tr>
+                  <th class="l">层级</th>
+                  <th class="l">信号</th>
+                  <th>突破日期</th>
+                  <th>被破支点日</th>
+                  <th>关键价位</th>
+                  <th>当日收盘</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 模块 4：口径与宏观联动说明 -->
+    <section class="section" id="sec-gold-method">
+      <div class="sec-header">
+        <div class="sec-title-wrap">
+          <div class="sec-bar" style="background:var(--sub)"></div>
+          <div>
+            <h2 class="sec-title">数据口径、宏观定价框架与防未来函数提示</h2>
+            <div class="sec-subtitle">打开即直连拉取最新行情并每分钟自动刷新，覆盖国际现货黄金、国内黄金ETF及美元/美债核心定价因子</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="method-grid">
+        <div class="method-card">
+          <h4>一、黄金三标的实时行情口径</h4>
+          <p><b>伦敦金现（XAU/USD）</b>日K取自新浪外盘现货接口并融合东方财富 <code>122.XAU</code> 实时盘中报价（美元/盎司）；<b>黄金股ETF（517520.SH）</b>与<b>黄金ETF（518880.SH）</b>取自腾讯财经前复权日K与实时快照，兼顾国内汇率折算与金矿股弹性。</p>
+        </div>
+        <div class="method-card">
+          <h4>二、美元指数与美债收益率叠加逻辑</h4>
+          <p><b>美元指数（DXY / 100.UDI）</b>、<b>美国10年期国债收益率（171.US10Y）</b>与<b>美国2年期国债收益率（171.US2Y）</b>直连东方财富实时日线与快照；按日期严格对齐（跨中美节假日自动前向填充 1 个交易日以消除断线），并计算 <b>10Y−2Y 期限利差（bp）</b> 与 60 日滚动相关性。</p>
+        </div>
+        <div class="method-card">
+          <h4>三、SMC 聪明钱结构与防未来函数</h4>
+          <p>在日K上区分<b>波段结构（L=10，实线）</b>与<b>内部结构（L=3，虚线）</b>，以收盘价突破触发 BOS/CHoCH，以 High/Low 触碰移除失效 OB。开启「反轴」可直观检验美元/美债利率与金价的经典负相关性（当避险或央行购金主导时二者亦可能阶段同涨）。</p>
+        </div>
+      </div>
+    </section>
+
+    <footer class="footer">
+      数据来源：新浪外盘现货 / 东方财富宏观行情（DXY、US10Y、US2Y）/ 腾讯财经　·　本页面仅用于个人投研与宏观跟踪，不构成任何投资建议
+    </footer>
+  </main>
+
+  <button type="button" class="back-top" id="backTopBtn" title="返回页面顶部">↑ 顶部</button>
+  <div class="toast" id="toast"></div>
+  <script src="data/dashboard_data.js"></script>
+  <script src="assets/live_engine.js?v=6"></script>
+  <script src="assets/app.js?v=6"></script>
+</body>
+</html>

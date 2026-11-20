@@ -1,7 +1,7 @@
 {
   "dashboard_title": "A股与大类资产每日投研监控看板",
   "timezone": "Asia/Shanghai",
-  "schedule_note": "每日 09:00 / 11:30 / 15:00 / 22:30 自动更新（打开即实时直连）",
+  "schedule_note": "打开即实时直连 · 每分钟自动刷新",
   "convergence": {
     "base_date": "2004-12-31",
     "csi300_tri_code": "H00300",
@@ -136,6 +136,35 @@
       "volume_unit": "股",
       "count": 520,
       "decimals": 2
+    }
+  },
+  "gold_macro": {
+    "dxy": {
+      "title": "美元指数 (DXY)",
+      "code": "UDI",
+      "display_code": "DXY",
+      "secid": "100.UDI",
+      "unit": "点",
+      "decimals": 2,
+      "count": 520
+    },
+    "us10y": {
+      "title": "美国10年期国债收益率",
+      "code": "US10Y",
+      "display_code": "US10Y",
+      "secid": "171.US10Y",
+      "unit": "%",
+      "decimals": 3,
+      "count": 520
+    },
+    "us2y": {
+      "title": "美国2年期国债收益率",
+      "code": "US2Y",
+      "display_code": "US2Y",
+      "secid": "171.US2Y",
+      "unit": "%",
+      "decimals": 3,
+      "count": 520
     }
   },
   "smc_params": {

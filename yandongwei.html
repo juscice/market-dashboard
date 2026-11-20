@@ -3,13 +3,13 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>燕东微（688172.SH）每日技术分析看板</title>
-  <meta name="description" content="燕东微（688172.SH）每日自动更新技术分析看板：科创板日K前复权、SMC聪明钱结构（BOS/CHoCH/订单块OB/FVG/折溢价区）与实时估值市值校准快照。" />
+  <title>燕东微（688172.SH）实时技术分析看板</title>
+  <meta name="description" content="燕东微（688172.SH）打开即最新、每分钟自动刷新的实时技术分析看板：科创板日K前复权、SMC聪明钱结构（BOS/CHoCH/订单块OB/FVG/折溢价区）与实时估值市值校准快照。" />
   <meta property="og:type" content="website" />
-  <meta property="og:title" content="燕东微（688172.SH）每日技术分析看板" />
+  <meta property="og:title" content="燕东微（688172.SH）实时技术分析看板" />
   <meta property="og:description" content="日K前复权 · 科创板量价口径校准 · SMC聪明钱结构与关键价位追踪" />
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23141c2b'/%3E%3Cpath d='M6 22l6-7 5 4 9-11' stroke='%23f87171' stroke-width='3' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E" />
-  <link rel="stylesheet" href="assets/styles.css?v=5" />
+  <link rel="stylesheet" href="assets/styles.css?v=6" />
   <script src="assets/vendor/echarts.min.js"
           onerror="document.write('<script src=&quot;https://cdn.bootcdn.net/ajax/libs/echarts/5.5.0/echarts.min.js&quot;><\/script>')"></script>
 </head>
@@ -19,17 +19,17 @@
       <div class="brand">
         <div class="brand-mark" style="background:linear-gradient(180deg, var(--red) 0%, var(--ink) 100%);"></div>
         <div>
-          <h1 id="pageTitle">燕东微（688172.SH）每日技术分析看板</h1>
-          <div class="brand-meta" id="metaLine">正在加载最新行情数据…</div>
+          <h1 id="pageTitle">燕东微（688172.SH）实时技术分析看板</h1>
+          <div class="brand-meta" id="metaLine">正在直连拉取最新实时行情…</div>
         </div>
       </div>
       <nav class="nav-links">
         <a href="#sec-ydw">日K + SMC走势</a>
         <a href="#sec-ydw-levels">关键结构与订单块</a>
         <a href="#sec-ydw-method">口径与风险提示</a>
-        <button type="button" class="refresh-btn" id="autoPollBtn" title="开启或关闭每 60 秒自动拉取实时行情">⏱ 自动60s: 关</button>
+        <span class="nav-divider"></span>
         <button type="button" class="refresh-btn" id="shareBtn" title="复制页面链接分享给他人">🔗 分享链接</button>
-        <button type="button" class="refresh-btn" id="refreshBtn" title="立即直连拉取最新实时行情">↻ 实时刷新</button>
+        <button type="button" class="refresh-btn primary" id="refreshBtn" title="立即直连拉取最新实时行情">↻ 实时刷新</button>
       </nav>
     </div>
   </header>
@@ -152,7 +152,7 @@
   <button type="button" class="back-top" id="backTopBtn" title="返回页面顶部">↑ 顶部</button>
   <div class="toast" id="toast"></div>
   <script src="data/dashboard_data.js"></script>
-  <script src="assets/live_engine.js?v=5"></script>
-  <script src="assets/app.js?v=5"></script>
+  <script src="assets/live_engine.js?v=6"></script>
+  <script src="assets/app.js?v=6"></script>
 </body>
 </html>

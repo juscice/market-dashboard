@@ -97,11 +97,13 @@ def main():
     host = "0.0.0.0" if lan_mode else "127.0.0.1"
 
     server = SafeHTTPServer((host, port), DashboardHandler)
-    print(f"主市场看板（5大项目）: http://127.0.0.1:{port}/")
+    print(f"主市场看板（4大项目）: http://127.0.0.1:{port}/")
+    print(f"黄金宏观独立看板:     http://127.0.0.1:{port}/gold.html")
     print(f"燕东微独立看板:       http://127.0.0.1:{port}/yandongwei.html")
     if lan_mode:
         lan_ip = get_lan_ip()
         print(f"局域网主市场看板:     http://{lan_ip}:{port}/")
+        print(f"局域网黄金宏观看板:   http://{lan_ip}:{port}/gold.html")
         print(f"局域网燕东微看板:     http://{lan_ip}:{port}/yandongwei.html")
     print("按 Ctrl+C 停止服务")
     try:

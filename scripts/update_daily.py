@@ -22,10 +22,16 @@ ROOT_DIR = SCRIPT_DIR.parent
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
-from briefing_engine import analyze_elliott_wave, analyze_price_channel, generate_morning_briefing
+from briefing_engine import (
+    analyze_elliott_wave,
+    analyze_price_channel,
+    generate_gold_briefing,
+    generate_morning_briefing,
+)
 from data_sources import (
     CST,
     csi_index_perf,
+    fetch_gold_macro_bundle,
     fetch_national_team_bundle,
     now_cst_str,
     sge_spot_kline,
@@ -391,9 +397,27 @@ def main() -> int:
         else:
             raise
 
+    print("[4/5] Updating Gold Macro Bundle: 美元指数(DXY) / 美国10年期与2年期国债收益率...")
+    try:
+        gold_macro = fetch_gold_macro_bundle(cfg["gold_macro"])
+        status_log["gold_macro"] = {
+            "ok": True,
+            "latest_date": gold_macro["latest_date"],
+            "note": f"DXY / US10Y / US2Y 更新至 {gold_macro['latest_date']}",
+        }
+    except Exception as exc:
+        traceback.print_exc()
+        if "gold_macro" in existing_data:
+            gold_macro = existing_data["gold_macro"]
+            status_log["gold_macro"] = {"ok": False, "latest_date": gold_macro.get("latest_date", ""), "note": f"沿用上次缓存（{exc}）"}
+        else:
+            gold_macro = {"latest_date": "", "series": {}, "spread_10y_2y": None}
+            status_log["gold_macro"] = {"ok": False, "latest_date": "", "note": f"拉取失败（{exc}）"}
+
     all_dates = [
         convergence.get("latest_date", ""),
         national_team.get("latest_date", ""),
+        gold_macro.get("latest_date", ""),
         *[v["summary"]["latest_date"] for v in technical.values()],
     ]
     latest_market_date = max((d for d in all_dates if d), default="")
@@ -415,45 +439,48 @@ def main() -> int:
         item["wave"] = analyze_elliott_wave(bars, decimals=dec, pct_threshold=thresh)
         item["channel"] = analyze_price_channel(bars, window_len=60, decimals=dec)
 
-    # Morning Briefing (daily 09:00 edition: generate at 09:xx or if today's edition not yet generated or --force-briefing)
+    # Always generate fresh live briefings from latest market snapshot
     now_cst = datetime.now(CST)
     today_cst = now_cst.strftime("%Y-%m-%d")
-    force_briefing = "--force-briefing" in sys.argv
+    gen_ts = now_cst_str()
     briefings_dir = data_dir / "briefings"
     briefings_dir.mkdir(parents=True, exist_ok=True)
     today_briefing_file = briefings_dir / f"{today_cst}.json"
     latest_briefing_file = data_dir / "morning_briefing.json"
 
-    need_new_briefing = force_briefing or (not today_briefing_file.exists()) or (now_cst.hour == 9)
-    if need_new_briefing:
-        print(f"[4/4] Generating 09:00 Morning Briefing (Wave + Channel) for {today_cst} ...")
-        morning_briefing = generate_morning_briefing(
-            convergence=convergence,
-            national_team=national_team,
-            technical=technical,
-            generated_at=now_cst_str(),
-            edition_date=today_cst,
-        )
-        # Keep payload compact: overlays are already attached on technical[key]
-        briefing_compact = {k: v for k, v in morning_briefing.items() if k != "overlays"}
-        today_briefing_file.write_text(json.dumps(briefing_compact, ensure_ascii=False, indent=2), encoding="utf-8")
-        latest_briefing_file.write_text(json.dumps(briefing_compact, ensure_ascii=False, indent=2), encoding="utf-8")
-        print(f"  -> OK: 09:00 briefing saved ({today_briefing_file.name})")
-    else:
-        briefing_compact = json.loads(today_briefing_file.read_text(encoding="utf-8"))
-        print(f"[4/4] Preserving today's 09:00 Morning Briefing ({today_briefing_file.name})")
+    print(f"[5/5] Generating Live Briefings (Wave + Channel + Macro) for {today_cst} ...")
+    morning_briefing = generate_morning_briefing(
+        convergence=convergence,
+        national_team=national_team,
+        technical=technical,
+        generated_at=gen_ts,
+        edition_date=today_cst,
+    )
+    briefing_compact = {k: v for k, v in morning_briefing.items() if k != "overlays"}
+    today_briefing_file.write_text(json.dumps(briefing_compact, ensure_ascii=False, indent=2), encoding="utf-8")
+    latest_briefing_file.write_text(json.dumps(briefing_compact, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    gold_briefing = generate_gold_briefing(
+        technical=technical,
+        gold_macro=gold_macro,
+        generated_at=gen_ts,
+        edition_date=today_cst,
+    )
+    print(f"  -> OK: live briefings generated ({today_briefing_file.name})")
 
     payload = {
         "meta": {
             "title": cfg["dashboard_title"],
-            "updated_at": now_cst_str(),
+            "updated_at": gen_ts,
             "latest_market_date": latest_market_date,
             "schedule_note": cfg["schedule_note"],
             "status": status_log,
         },
         "morning_briefing": briefing_compact,
+        "gold_briefing": gold_briefing,
         "convergence": convergence,
         "national_team": national_team,
+        "gold_macro": gold_macro,
         "technical": technical,
     }
 
@@ -462,16 +489,35 @@ def main() -> int:
     tmp_path.write_text(json_text, encoding="utf-8")
     tmp_path.replace(output_path)
 
-    # 1. Also write data/dashboard_data.js so index.html works seamlessly via file:// double-click
+    # 1. Also write data/dashboard_data.js so HTML works seamlessly via file:// double-click
     js_path = data_dir / "dashboard_data.js"
     js_tmp = data_dir / "dashboard_data.js.tmp"
     js_tmp.write_text("window.__DASHBOARD_DATA__=" + json_text + ";\n", encoding="utf-8")
     js_tmp.replace(js_path)
 
-    # 2. Build TWO self-contained single-file shareable HTML snapshots:
-    #    - dist/market-dashboard-share.html (5大市场与大类资产项目)
-    #    - dist/yandongwei-share.html (燕东微独立看板，仅内嵌所需数据，更轻量)
-    market_share = build_single_file_snapshot(ROOT_DIR, "index.html", "market-dashboard-share.html", json_text)
+    # 2. Build THREE self-contained single-file shareable HTML snapshots:
+    #    - dist/market-dashboard-share.html (主市场 4 大核心项目)
+    #    - dist/gold-share.html (黄金 + 美元指数 + 美国10Y/2Y国债收益率独立看板)
+    #    - dist/yandongwei-share.html (燕东微独立看板)
+    market_payload = {
+        "meta": payload["meta"],
+        "morning_briefing": payload["morning_briefing"],
+        "convergence": payload["convergence"],
+        "national_team": payload["national_team"],
+        "technical": {k: payload["technical"][k] for k in ("star50", "cyb") if k in payload["technical"]},
+    }
+    market_json = json.dumps(market_payload, ensure_ascii=False, separators=(",", ":"))
+    market_share = build_single_file_snapshot(ROOT_DIR, "index.html", "market-dashboard-share.html", market_json)
+
+    gold_payload = {
+        "meta": payload["meta"],
+        "gold_briefing": payload["gold_briefing"],
+        "gold_macro": payload["gold_macro"],
+        "technical": {k: payload["technical"][k] for k in ("gold_xau", "gold_stock_etf", "gold_etf") if k in payload["technical"]},
+    }
+    gold_json = json.dumps(gold_payload, ensure_ascii=False, separators=(",", ":"))
+    gold_share = build_single_file_snapshot(ROOT_DIR, "gold.html", "gold-share.html", gold_json)
+
     ydw_payload = {
         "meta": payload["meta"],
         "technical": {"yandongwei": payload["technical"]["yandongwei"]},
@@ -483,6 +529,8 @@ def main() -> int:
     parts = [f"{output_path.name} ({size_kb:.1f} KB)"]
     if market_share:
         parts.append(f"{market_share.name} ({market_share.stat().st_size / 1024.0:.1f} KB)")
+    if gold_share:
+        parts.append(f"{gold_share.name} ({gold_share.stat().st_size / 1024.0:.1f} KB)")
     if ydw_share:
         parts.append(f"{ydw_share.name} ({ydw_share.stat().st_size / 1024.0:.1f} KB)")
     print(f"\n[DONE] Generated {' | '.join(parts)} | latest_market_date={latest_market_date}")

@@ -18,9 +18,18 @@ from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
-import requests
-from requests.adapters import HTTPAdapter
-from urllib3.util.retry import Retry
+import urllib.error
+import urllib.parse
+import urllib.request
+
+try:
+    import requests
+    from requests.adapters import HTTPAdapter
+    from urllib3.util.retry import Retry
+    HAS_REQUESTS = True
+except ImportError:
+    requests = None  # type: ignore[assignment]
+    HAS_REQUESTS = False
 
 UA = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -47,6 +56,12 @@ SINA_GLOBAL_FUT_KLINE_URL = (
 )
 SSE_ETF_SHARES_URL = "https://query.sse.com.cn/commonQuery.do"
 SZSE_FUND_LIST_URL = "https://fund.szse.cn/api/report/ShowReport/data"
+EASTMONEY_KLINE_URL = "https://push2his.eastmoney.com/api/qt/stock/kline/get"
+EASTMONEY_QUOTE_URL = "https://push2.eastmoney.com/api/qt/ulist.np/get"
+SINA_FOREX_KLINE_URL = (
+    "https://vip.stock.finance.sina.com.cn/forex/api/jsonp.php/var%20_{code}="
+    "/NewForexService.getDayKLine"
+)
 
 CST = timezone(timedelta(hours=8))
 
@@ -55,7 +70,64 @@ def now_cst_str() -> str:
     return datetime.now(CST).strftime("%Y-%m-%d %H:%M (北京时间)")
 
 
-def create_retry_session() -> requests.Session:
+class _UrllibResponse:
+    def __init__(self, status: int, content: bytes):
+        self.status_code = status
+        self.content = content
+
+    def raise_for_status(self) -> None:
+        if self.status_code >= 400:
+            raise RuntimeError(f"HTTP {self.status_code}")
+
+    def json(self) -> Any:
+        return json.loads(self.content.decode("utf-8"))
+
+
+class _UrllibSession:
+    def __init__(self) -> None:
+        self.headers: dict[str, str] = {}
+
+    def _req(
+        self,
+        method: str,
+        url: str,
+        params: dict[str, Any] | None = None,
+        data: dict[str, Any] | None = None,
+        headers: dict[str, str] | None = None,
+        timeout: Any = 20,
+    ) -> _UrllibResponse:
+        if params:
+            sep = "&" if "?" in url else "?"
+            url = url + sep + urllib.parse.urlencode(params, safe=",.:")
+        body = urllib.parse.urlencode(data).encode("utf-8") if data is not None else None
+        req_headers = {**self.headers, **(headers or {})}
+        if body is not None and "Content-Type" not in req_headers:
+            req_headers["Content-Type"] = "application/x-www-form-urlencoded"
+        t = timeout[1] if isinstance(timeout, tuple) else float(timeout)
+        last_exc: Exception | None = None
+        for attempt in range(4):
+            try:
+                req = urllib.request.Request(url, data=body, headers=req_headers, method=method)
+                with urllib.request.urlopen(req, timeout=t) as resp:
+                    return _UrllibResponse(resp.status, resp.read())
+            except Exception as exc:
+                last_exc = exc
+                if attempt < 3:
+                    time.sleep(0.7 * (attempt + 1))
+        raise RuntimeError(str(last_exc))
+
+    def get(self, url: str, **kwargs: Any) -> _UrllibResponse:
+        return self._req("GET", url, **kwargs)
+
+    def post(self, url: str, **kwargs: Any) -> _UrllibResponse:
+        return self._req("POST", url, **kwargs)
+
+
+def create_retry_session() -> Any:
+    if not HAS_REQUESTS:
+        session = _UrllibSession()
+        session.headers.update({"User-Agent": UA})
+        return session
     session = requests.Session()
     session.headers.update({"User-Agent": UA})
     retry = Retry(
@@ -570,4 +642,321 @@ def fetch_national_team_bundle(cfg: dict[str, Any], cache_file: Path) -> dict[st
         "rows": rows,
         "futures": data.get("futures"),
         "baseline": baseline,
+    }
+
+
+def eastmoney_kline(secid: str, count: int = 520) -> tuple[list[dict[str, Any]], str]:
+    """东方财富免Key日K序列（支持美元指数 100.UDI、美债收益率 171.US10Y / 171.US2Y、伦敦金现 122.XAU 等）。"""
+    # Note: EastMoney push2his requires literal commas in fields1/fields2 query string
+    qs = (
+        f"secid={secid}&fields1=f1,f2,f3,f4,f5,f6"
+        f"&fields2=f51,f52,f53,f54,f55,f56&klt=101&fqt=0&lmt={int(count)}&end=20500101"
+    )
+    full_url = f"{EASTMONEY_KLINE_URL}?{qs}"
+    resp = SESSION.get(
+        full_url,
+        timeout=(12, 25),
+    )
+    resp.raise_for_status()
+    payload = resp.json()
+    node = payload.get("data") or {}
+    klines = node.get("klines") or []
+    if not klines:
+        raise RuntimeError(f"东方财富日K {secid} 返回空数据")
+    rows = []
+    for line in klines:
+        parts = str(line).split(",")
+        if len(parts) < 5:
+            continue
+        o, c, h, l = float(parts[1]), float(parts[2]), float(parts[3]), float(parts[4])
+        vol = float(parts[5]) if len(parts) > 5 and parts[5] not in ("", "-") else 0.0
+        if min(o, c, h, l) <= 0:
+            continue
+        rows.append({
+            "date": parts[0].strip(),
+            "open": o,
+            "close": c,
+            "high": max(h, o, c),
+            "low": min(l, o, c),
+            "volume": vol if vol > 0 else None,
+        })
+    rows.sort(key=lambda r: r["date"])
+    if count and len(rows) > count:
+        rows = rows[-count:]
+    return rows, full_url
+
+
+def eastmoney_quotes(secids: list[str]) -> dict[str, dict[str, Any]]:
+    """批量拉取东方财富实时快照（美元指数、美债收益率、伦敦金现等）。"""
+    qs = f"fltt=2&fields=f2,f3,f4,f12,f14,f15,f16,f17,f18,f124&secids={','.join(secids)}"
+    resp = SESSION.get(
+        f"{EASTMONEY_QUOTE_URL}?{qs}",
+        timeout=(12, 20),
+    )
+    resp.raise_for_status()
+    payload = resp.json()
+    diff = (payload.get("data") or {}).get("diff") or []
+    out: dict[str, dict[str, Any]] = {}
+    for row in diff:
+        code = row.get("f12")
+        if not code or row.get("f2") in (None, "-"):
+            continue
+
+        def _num(val: Any) -> float | None:
+            if val in (None, "-", ""):
+                return None
+            try:
+                return float(val)
+            except (ValueError, TypeError):
+                return None
+
+        ts = _num(row.get("f124"))
+        quote_date = None
+        if ts and ts > 1_000_000_000:
+            quote_date = datetime.fromtimestamp(ts, CST).strftime("%Y-%m-%d")
+
+        out[str(code)] = {
+            "code": str(code),
+            "name": str(row.get("f14") or ""),
+            "price": _num(row.get("f2")),
+            "change_pct": _num(row.get("f3")),
+            "change_amt": _num(row.get("f4")),
+            "high": _num(row.get("f15")),
+            "low": _num(row.get("f16")),
+            "open": _num(row.get("f17")),
+            "last_close": _num(row.get("f18")),
+            "quote_date": quote_date,
+        }
+    return out
+
+
+def sina_forex_kline(symbol: str = "DINIW", count: int = 520) -> tuple[list[dict[str, Any]], str]:
+    """新浪外汇日K备用接口（如 DINIW 美元指数）。"""
+    code = str(symbol).strip().upper()
+    url = SINA_FOREX_KLINE_URL.format(code=code)
+    resp = SESSION.get(
+        url,
+        params={"symbol": code},
+        headers={"Referer": "https://finance.sina.com.cn/"},
+        timeout=(12, 25),
+    )
+    resp.raise_for_status()
+    text = resp.content.decode("gbk", errors="replace")
+    m = re.search(rf"var _{re.escape(code)}=\(\"(.*)\"\);?\s*$", text, re.S)
+    if not m:
+        raise RuntimeError(f"新浪外汇 {code} 返回非预期 JSONP")
+    rows = []
+    for seg in m.group(1).split("|"):
+        parts = [p.strip() for p in seg.split(",")]
+        if len(parts) < 5 or not parts[0]:
+            continue
+        o, l, h, c = float(parts[1]), float(parts[2]), float(parts[3]), float(parts[4])
+        if min(o, l, h, c) <= 0:
+            continue
+        rows.append({
+            "date": parts[0],
+            "open": o,
+            "low": min(l, o, c),
+            "high": max(h, o, c),
+            "close": c,
+            "volume": None,
+        })
+    rows.sort(key=lambda r: r["date"])
+    if count and len(rows) > count:
+        rows = rows[-count:]
+    return rows, url
+
+
+def _build_macro_series_item(
+    key: str,
+    spec: dict[str, Any],
+    bars: list[dict[str, Any]],
+    quote: dict[str, Any] | None,
+    source_label: str,
+    source_url: str,
+) -> dict[str, Any]:
+    dec = int(spec.get("decimals", 2))
+    is_yield = spec.get("unit") == "%"
+    merged = list(bars)
+    if quote and quote.get("price") and quote["price"] > 0 and merged:
+        last = merged[-1]
+        q_date = quote.get("quote_date") or last["date"]
+        price = float(quote["price"])
+        o = float(quote["open"]) if quote.get("open") and quote["open"] > 0 else price
+        h = max(float(quote["high"]) if quote.get("high") and quote["high"] > 0 else price, price, o)
+        l = min(float(quote["low"]) if quote.get("low") and quote["low"] > 0 else price, price, o)
+        if q_date == last["date"]:
+            merged[-1] = {
+                **last,
+                "open": o,
+                "high": max(last["high"], h),
+                "low": min(last["low"], l),
+                "close": price,
+            }
+        elif q_date > last["date"]:
+            merged.append({"date": q_date, "open": o, "high": h, "low": l, "close": price, "volume": None})
+
+    dates = [b["date"] for b in merged]
+    closes = [round(float(b["close"]), dec) for b in merged]
+    ohlc = [
+        [round(float(b["open"]), dec), round(float(b["close"]), dec), round(float(b["low"]), dec), round(float(b["high"]), dec)]
+        for b in merged
+    ]
+    n = len(closes)
+    last_c = closes[-1]
+    prev_c = closes[-2] if n >= 2 else last_c
+    chg_amt = round(last_c - prev_c, dec)
+    chg_pct = round(((last_c / prev_c) - 1.0) * 100.0, 2) if prev_c > 0 else 0.0
+    if quote and quote.get("change_pct") is not None:
+        chg_pct = round(float(quote["change_pct"]), 2)
+    if quote and quote.get("change_amt") is not None:
+        chg_amt = round(float(quote["change_amt"]), dec)
+
+    def _ret(k: int) -> float | None:
+        if n > k and closes[-1 - k] > 0:
+            return round(((last_c / closes[-1 - k]) - 1.0) * 100.0, 2)
+        return None
+
+    def _diff_bp(k: int) -> float | None:
+        if is_yield and n > k:
+            return round((last_c - closes[-1 - k]) * 100.0, 1)
+        return None
+
+    return {
+        "meta": {
+            "key": key,
+            "title": spec["title"],
+            "code": spec["code"],
+            "display_code": spec["display_code"],
+            "secid": spec["secid"],
+            "unit": spec["unit"],
+            "decimals": dec,
+            "source": source_label,
+            "source_url": source_url,
+            "bar_count": n,
+            "date_range": [dates[0], dates[-1]],
+        },
+        "dates": dates,
+        "closes": closes,
+        "ohlc": ohlc,
+        "summary": {
+            "latest_date": dates[-1],
+            "close": last_c,
+            "change_amt": chg_amt,
+            "change_pct": chg_pct,
+            "change_bp": round(chg_amt * 100.0, 1) if is_yield else None,
+            "ret_5d": _ret(5),
+            "ret_20d": _ret(20),
+            "ret_60d": _ret(60),
+            "chg_5d_bp": _diff_bp(5),
+            "chg_20d_bp": _diff_bp(20),
+            "chg_60d_bp": _diff_bp(60),
+        },
+    }
+
+
+def eastmoney_datacenter_us_yields(count: int = 520) -> dict[str, list[dict[str, Any]]]:
+    """东方财富数据中心中美利差表备用接口（EMG00001306=美债2Y收益率, EMG00001308=美债10Y收益率）。"""
+    url = (
+        "https://datacenter-web.eastmoney.com/api/data/v1/get"
+        f"?reportName=RPTA_WEB_TREASURYYIELD&columns=SOLAR_DATE,EMG00001306,EMG00001308"
+        f"&sortColumns=SOLAR_DATE&sortTypes=-1&pageSize={int(count) + 60}&pageNumber=1"
+    )
+    resp = SESSION.get(url, timeout=(12, 25))
+    resp.raise_for_status()
+    rows = ((resp.json().get("result") or {}).get("data")) or []
+    us10y: list[dict[str, Any]] = []
+    us2y: list[dict[str, Any]] = []
+    for r in rows:
+        dt = str(r.get("SOLAR_DATE") or "")[:10]
+        if len(dt) != 10:
+            continue
+        v10 = r.get("EMG00001308")
+        v2 = r.get("EMG00001306")
+        if v10 is not None:
+            f10 = float(v10)
+            if f10 > 0:
+                us10y.append({"date": dt, "open": f10, "high": f10, "low": f10, "close": f10, "volume": None})
+        if v2 is not None:
+            f2 = float(v2)
+            if f2 > 0:
+                us2y.append({"date": dt, "open": f2, "high": f2, "low": f2, "close": f2, "volume": None})
+    us10y.sort(key=lambda x: x["date"])
+    us2y.sort(key=lambda x: x["date"])
+    return {"us10y": us10y[-count:], "us2y": us2y[-count:]}
+
+
+def fetch_gold_macro_bundle(cfg: dict[str, Any]) -> dict[str, Any]:
+    """获取黄金宏观联动三件套：美元指数 (DXY)、美国10年期国债收益率 (US10Y)、美国2年期国债收益率 (US2Y)。"""
+    secids = [spec["secid"] for spec in cfg.values()]
+    quotes: dict[str, Any] = {}
+    try:
+        quotes = eastmoney_quotes(secids)
+    except Exception as exc:
+        print(f"[WARN] eastmoney_quotes macro failed: {exc}")
+
+    dc_fallback: dict[str, list[dict[str, Any]]] | None = None
+    items: dict[str, Any] = {}
+    for key, spec in cfg.items():
+        secid = spec["secid"]
+        count = int(spec.get("count", 520))
+        print(f"  -> Fetching macro {key} ({spec['title']} / {secid}) ...")
+        try:
+            bars, url = eastmoney_kline(secid, count=count)
+            src_label = "东方财富宏观日线 (实时直连)"
+        except Exception as exc:
+            if key == "dxy":
+                print(f"     EastMoney DXY failed ({exc}), falling back to Sina DINIW ...")
+                bars, url = sina_forex_kline("DINIW", count=count)
+                src_label = "新浪外汇美元指数日线"
+            elif key in ("us10y", "us2y"):
+                print(f"     EastMoney {key} failed ({exc}), falling back to EastMoney DataCenter ...")
+                if dc_fallback is None:
+                    dc_fallback = eastmoney_datacenter_us_yields(count=count)
+                bars = dc_fallback[key]
+                url = "https://datacenter-web.eastmoney.com/api/data/v1/get?reportName=RPTA_WEB_TREASURYYIELD"
+                src_label = "东方财富数据中心美债收益率日线"
+            else:
+                raise
+        q = quotes.get(spec["code"])
+        items[key] = _build_macro_series_item(key, spec, bars, q, src_label, url)
+        s = items[key]["summary"]
+        extra = f" ({s['change_bp']:+.1f}bp)" if s["change_bp"] is not None else f" ({s['change_pct']:+.2f}%)"
+        print(f"     OK: {s['latest_date']} close={s['close']}{spec['unit']}{extra}")
+
+    # Compute 10Y - 2Y Treasury Yield Spread (bp) aligned on union of dates
+    spread_10y_2y = None
+    if "us10y" in items and "us2y" in items:
+        m10 = dict(zip(items["us10y"]["dates"], items["us10y"]["closes"]))
+        m2 = dict(zip(items["us2y"]["dates"], items["us2y"]["closes"]))
+        common_dates = sorted(set(m10.keys()) | set(m2.keys()))
+        sp_dates: list[str] = []
+        sp_bps: list[float] = []
+        last10 = None
+        last2 = None
+        for d in common_dates:
+            if d in m10:
+                last10 = m10[d]
+            if d in m2:
+                last2 = m2[d]
+            if last10 is not None and last2 is not None:
+                sp_dates.append(d)
+                sp_bps.append(round((last10 - last2) * 100.0, 1))
+        if sp_dates:
+            cur_bp = sp_bps[-1]
+            prev_bp = sp_bps[-2] if len(sp_bps) >= 2 else cur_bp
+            spread_10y_2y = {
+                "dates": sp_dates,
+                "spread_bp": sp_bps,
+                "latest_date": sp_dates[-1],
+                "latest_bp": cur_bp,
+                "change_bp": round(cur_bp - prev_bp, 1),
+                "is_inverted": cur_bp < 0,
+            }
+
+    latest_date = max((v["summary"]["latest_date"] for v in items.values()), default="")
+    return {
+        "latest_date": latest_date,
+        "series": items,
+        "spread_10y_2y": spread_10y_2y,
     }

@@ -219,10 +219,10 @@ body {
   color: #a62626;
 }
 
-/* Overview KPI Strip (5 Market Modules) */
+/* Overview KPI Strip (4 Market / Gold Modules) */
 .kpi-strip {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 12px;
   margin-bottom: 18px;
 }
@@ -305,6 +305,17 @@ body {
   justify-content: space-between;
   align-items: flex-start;
   gap: 12px;
+  cursor: pointer;
+}
+
+.briefing-banner.gold-theme {
+  background: linear-gradient(135deg, #1c1917 0%, #451a03 58%, #b45309 100%);
+}
+
+.briefing-banner.gold-theme .briefing-pill {
+  background: rgba(251, 191, 36, 0.2);
+  border-color: rgba(252, 211, 77, 0.45);
+  color: #fef3c7;
 }
 
 .briefing-title-row {
@@ -367,12 +378,16 @@ body {
 
 .briefing-grid {
   display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
 }
 
+.briefing-grid.cols-3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
 .b-card {
-  grid-column: span 2;
+  grid-column: span 1;
   background: var(--card-soft);
   border: 1px solid var(--line);
   border-radius: 11px;
@@ -384,7 +399,7 @@ body {
 }
 
 .b-card.wide {
-  grid-column: span 3;
+  grid-column: span 1;
 }
 
 .b-card:hover {
@@ -627,6 +642,30 @@ body {
   background: var(--purple-bg);
   border-color: #b5a3ff;
   color: var(--purple);
+}
+
+.pill.accent-dxy.active {
+  background: rgba(37, 99, 235, 0.12);
+  border-color: #60a5fa;
+  color: #1d4ed8;
+}
+
+.pill.accent-us10y.active {
+  background: rgba(220, 38, 38, 0.10);
+  border-color: #f87171;
+  color: #b91c1c;
+}
+
+.pill.accent-us2y.active {
+  background: rgba(13, 148, 136, 0.11);
+  border-color: #2dd4bf;
+  color: #0f766e;
+}
+
+.pill.accent-inv.active {
+  background: rgba(15, 23, 42, 0.10);
+  border-color: #475569;
+  color: #0f172a;
 }
 
 .hint-line {
@@ -997,9 +1036,10 @@ details[open] summary::after {
 
 @media (max-width: 1120px) {
   .kpi-strip {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
-  .briefing-grid {
+  .briefing-grid,
+  .briefing-grid.cols-3 {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
   .b-card,
@@ -1015,7 +1055,8 @@ details[open] summary::after {
   .kpi-strip {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
-  .briefing-grid {
+  .briefing-grid,
+  .briefing-grid.cols-3 {
     grid-template-columns: 1fr;
   }
   .wrap {

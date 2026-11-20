@@ -1,16 +1,6 @@
-name: Scheduled Market Dashboard Update
+name: Manual Baseline Snapshot Refresh
 
 on:
-  schedule:
-    # 每日四次（北京时间 = UTC+8）：
-    # 09:00 CST -> 01:00 UTC
-    # 11:30 CST -> 03:30 UTC
-    # 15:00 CST -> 07:00 UTC
-    # 22:30 CST -> 14:30 UTC
-    - cron: "0 1 * * *"
-    - cron: "30 3 * * *"
-    - cron: "0 7 * * *"
-    - cron: "30 14 * * *"
   workflow_dispatch:
 
 permissions:
@@ -31,13 +21,13 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      - name: Run scheduled update script
+      - name: Run baseline snapshot script
         run: python -u scripts/update_daily.py
 
-      - name: Commit updated data
+      - name: Commit updated baseline data
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add data/dashboard_data.json data/dashboard_data.js data/morning_briefing.json data/briefings/ data/etf_history_cache.json data/cache/ dist/market-dashboard-share.html dist/yandongwei-share.html
-          git diff --cached --quiet || git commit -m "chore: scheduled market data update ($(date -u +'%Y-%m-%d %H:%M UTC'))"
+          git add data/dashboard_data.json data/dashboard_data.js data/morning_briefing.json data/briefings/ data/etf_history_cache.json data/cache/ dist/market-dashboard-share.html dist/gold-share.html dist/yandongwei-share.html
+          git diff --cached --quiet || git commit -m "chore: manual baseline snapshot update ($(date -u +'%Y-%m-%d %H:%M UTC'))"
           git push

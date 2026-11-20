@@ -464,24 +464,23 @@ def generate_morning_briefing(
         },
         _tech_card(3, "#sec-star50", "star50", "科创50"),
         _tech_card(4, "#sec-cyb", "cyb", "创业板指"),
-        _tech_card(5, "#sec-gold", "gold_xau", "伦敦金现 (黄金)", extra_hint=gold_extra),
     ]
 
-    # Overall executive headline verdict
-    bear_cnt = sum(1 for k in ("star50", "cyb", "gold_xau") if wc_map[k]["wave"]["bias"] == "bearish")
-    bull_cnt = sum(1 for k in ("star50", "cyb", "gold_xau") if wc_map[k]["wave"]["bias"] == "bullish")
-    if bear_cnt >= 2 and gjd_bias == "bullish":
-        headline = "核心定调：成长宽基与黄金处于下行通道/调整浪探底区，但国家队宽基ETF出现显著净申购托底，重点观察通道下轨与波浪背离共振企稳机会。"
-    elif bear_cnt >= 2:
-        headline = "核心定调：主要风险资产仍处下行通道与空头调整浪内，多看少动、紧盯通道下轨支撑与内部结构 CHoCH 反转确认。"
-    elif bull_cnt >= 2:
-        headline = "核心定调：多头推动浪与上行通道共振延续，顺势跟踪同时留意通道上轨压力与中轨防守。"
+    # Overall executive headline verdict (4 main A-share modules)
+    bear_cnt = sum(1 for k in ("star50", "cyb") if wc_map[k]["wave"]["bias"] == "bearish")
+    bull_cnt = sum(1 for k in ("star50", "cyb") if wc_map[k]["wave"]["bias"] == "bullish")
+    if bear_cnt == 2 and gjd_bias == "bullish":
+        headline = "核心定调：科创50与创业板指处于下行通道/调整浪探底区，但国家队宽基ETF出现显著净申购托底，重点观察通道下轨与波浪背离共振企稳机会。"
+    elif bear_cnt == 2:
+        headline = "核心定调：成长宽基仍处下行通道与空头调整浪内，多看少动、紧盯通道下轨支撑与内部结构 CHoCH 反转确认。"
+    elif bull_cnt == 2:
+        headline = "核心定调：成长宽基多头推动浪与上行通道共振延续，顺势跟踪同时留意通道上轨压力与中轨防守。"
     else:
-        headline = "核心定调：大类资产呈结构性分化与箱体震荡，紧扣各标的通道上下轨与波浪关键位高抛低吸。"
+        headline = "核心定调：A股核心宽基呈结构性分化与箱体震荡，紧扣股债性价比、国家队资金动向与通道上下轨节奏操作。"
 
-    # Plain-text copyable morning report for WeChat / Feishu / DingTalk
+    # Plain-text copyable live report for WeChat / Feishu / DingTalk
     lines = [
-        f"【每日 09:00 晨间波浪与通道简报｜{edition_date}】",
+        f"【A股实时波浪与通道投研简报｜{edition_date}】",
         headline,
         "",
     ]
@@ -493,14 +492,173 @@ def generate_morning_briefing(
         lines.append(f"   · 关键参照：下沿/支撑 {lv['support']} ｜ 中轴 {lv['mid']} ｜ 上沿/压力 {lv['resistance']}")
         lines.append(f"   · 简评：{it['view']}")
     lines.append("")
-    lines.append(f"生成时间：{generated_at}（数据仅供参考，不构成投资建议）")
+    lines.append(f"实时生成时间：{generated_at}（按最新行情即时生成，仅供参考不构成投资建议）")
 
     return {
         "edition_date": edition_date,
-        "scheduled_time": "09:00 (北京时间)",
+        "scheduled_time": "实时行情动态生成",
         "generated_at": generated_at,
         "headline": headline,
         "items": items,
         "plain_text": "\n".join(lines),
         "overlays": wc_map,
+    }
+
+
+def generate_gold_briefing(
+    technical: dict[str, Any],
+    gold_macro: dict[str, Any] | None,
+    generated_at: str,
+    edition_date: str,
+) -> dict[str, Any]:
+    """生成黄金独立看板的实时波浪 + 通道 + 美元/美债宏观联动投研简报。"""
+    xau = technical["gold_xau"]
+    xau_bars = _bars_from_tech(xau)
+    dec = int(xau["meta"]["decimals"])
+    w = xau.get("wave") or analyze_elliott_wave(xau_bars, decimals=dec, pct_threshold=0.045)
+    ch = xau.get("channel") or analyze_price_channel(xau_bars, window_len=60, decimals=dec)
+    sx = xau["summary"]
+
+    g_stk = technical.get("gold_stock_etf", {}).get("summary", {})
+    g_etf = technical.get("gold_etf", {}).get("summary", {})
+    etf_hint = ""
+    if g_stk and g_etf:
+        etf_hint = f"国内映射：黄金股ETF {g_stk['close']:.3f}（{g_stk['change_pct']:+.2f}%），黄金ETF {g_etf['close']:.3f}（{g_etf['change_pct']:+.2f}%）。"
+
+    if w["bias"] == "bearish" and ch["pos_pct"] <= 25:
+        gold_view = f"波浪偏空叠加通道下轨超卖（分位 {ch['pos_pct']:.0f}%），切忌盲目追空，重点观察 {ch['lower']:.{dec}f} 支撑位是否出现底背离或内部 CHoCH 企稳信号。"
+    elif w["bias"] == "bullish" and ch["pos_pct"] >= 78:
+        gold_view = f"多头推动浪运行至通道上轨压力区（{ch['upper']:.{dec}f}），顺势持有同时防范短线乖离回踩中轨 {ch['mid']:.{dec}f}。"
+    elif w["bias"] == "bullish":
+        gold_view = f"波浪与通道共振偏多，以中轨 {ch['mid']:.{dec}f} / 斐波那契 50% ({w['fib_levels']['f500']:.{dec}f}) 为防守参照。"
+    else:
+        gold_view = f"当前处于{w['wave_stage']}与{ch['direction']}共振区，上方阻力看中轨 {ch['mid']:.{dec}f}，下方防守看下轨 {ch['lower']:.{dec}f}。"
+    if etf_hint:
+        gold_view += " " + etf_hint
+
+    series_map = (gold_macro or {}).get("series") or {}
+    dxy = series_map.get("dxy")
+    us10y = series_map.get("us10y")
+    us2y = series_map.get("us2y")
+    sp = (gold_macro or {}).get("spread_10y_2y")
+
+    macro_items: list[dict[str, Any]] = [
+        {
+            "index": 1,
+            "href": "#sec-gold-main",
+            "key": "gold_xau",
+            "title": "伦敦金现 (XAU/USD)",
+            "code": xau["meta"]["display_code"],
+            "price_text": f"{sx['close']:.{dec}f} 美元/盎司",
+            "change_pct": sx["change_pct"],
+            "bias": w["bias"],
+            "wave_stage": w["wave_stage"],
+            "channel_stage": f"{ch['direction']} · {ch['pos_state'].split('（')[0]}（{ch['pos_pct']:.0f}%）",
+            "key_levels": {
+                "support": f"{ch['lower']:.{dec}f}",
+                "mid": f"{ch['mid']:.{dec}f}",
+                "resistance": f"{ch['upper']:.{dec}f}",
+            },
+            "view": gold_view,
+        }
+    ]
+
+    dxy_pressure = 0
+    if dxy:
+        sd = dxy["summary"]
+        r20 = sd.get("ret_20d") or 0.0
+        if r20 >= 1.5:
+            dxy_bias = "bearish"
+            dxy_tag = "美元走强 · 压制金价"
+            dxy_pressure += 1
+        elif r20 <= -1.5:
+            dxy_bias = "bullish"
+            dxy_tag = "美元走弱 · 利好金价"
+            dxy_pressure -= 1
+        else:
+            dxy_bias = "neutral"
+            dxy_tag = "美元震荡 · 中性影响"
+        macro_items.append({
+            "index": 2,
+            "href": "#sec-gold-macro",
+            "key": "dxy",
+            "title": "美元指数 (DXY)",
+            "code": "100.UDI",
+            "price_text": f"{sd['close']:.2f}",
+            "change_pct": sd["change_pct"],
+            "bias": dxy_bias,
+            "wave_stage": f"20日 {sd['ret_20d']:+.2f}%" if sd.get("ret_20d") is not None else "实时跟踪",
+            "channel_stage": dxy_tag,
+            "key_levels": {
+                "support": f"5日 {sd['ret_5d']:+.2f}%" if sd.get("ret_5d") is not None else "—",
+                "mid": f"现值 {sd['close']:.2f}",
+                "resistance": f"60日 {sd['ret_60d']:+.2f}%" if sd.get("ret_60d") is not None else "—",
+            },
+            "view": f"美元指数最新报 {sd['close']:.2f}（日变动 {sd['change_pct']:+.2f}%），近20个交易日变动 {r20:+.2f}%；美元强弱直接影响以美元计价的国际金价定价中枢。",
+        })
+
+    if us10y and us2y:
+        s10 = us10y["summary"]
+        s2 = us2y["summary"]
+        bp20_10 = s10.get("chg_20d_bp") or 0.0
+        bp20_2 = s2.get("chg_20d_bp") or 0.0
+        if bp20_10 >= 15:
+            y_bias = "bearish"
+            y_tag = "美债利率上行 · 抬升机会成本"
+            dxy_pressure += 1
+        elif bp20_10 <= -15:
+            y_bias = "bullish"
+            y_tag = "美债利率回落 · 利好无息黄金"
+            dxy_pressure -= 1
+        else:
+            y_bias = "neutral"
+            y_tag = "美债利率窄幅震荡"
+        sp_txt = f"10Y−2Y利差 {sp['latest_bp']:+.1f}bp（{'倒挂' if sp['is_inverted'] else '正斜率'}）" if sp else "实时跟踪"
+        macro_items.append({
+            "index": 3,
+            "href": "#sec-gold-macro",
+            "key": "us_yields",
+            "title": "美国10Y / 2Y国债收益率",
+            "code": "US10Y / US2Y",
+            "price_text": f"{s10['close']:.3f}% / {s2['close']:.3f}%",
+            "change_pct": s10["change_pct"],
+            "bias": y_bias,
+            "wave_stage": sp_txt,
+            "channel_stage": y_tag,
+            "key_levels": {
+                "support": f"10Y: {s10['close']:.3f}%",
+                "mid": f"2Y: {s2['close']:.3f}%",
+                "resistance": f"10Y 20日 {bp20_10:+.0f}bp",
+            },
+            "view": f"美国10年期国债收益率报 {s10['close']:.3f}%（日变动 {s10['change_bp']:+.1f}bp，近20日 {bp20_10:+.1f}bp），2年期报 {s2['close']:.3f}%（近20日 {bp20_2:+.1f}bp），{sp_txt}。",
+        })
+
+    if w["bias"] == "bullish" and dxy_pressure <= 0:
+        headline = "黄金实时定调：伦敦金现技术结构偏多且美元/美债利率未构成强压制，宏观与技术共振向好，顺势跟踪通道中轨与前高突破。"
+    elif w["bias"] == "bearish" and dxy_pressure >= 1:
+        headline = "黄金实时定调：美元与美债收益率偏强叠加金价处于调整浪/下行通道，短线承压，重点观察通道下轨与利率拐点共振。"
+    elif w["bias"] == "bearish":
+        headline = "黄金实时定调：金价技术面处于调整浪/回调阶段，紧盯 60 日通道下轨与美债 10Y/2Y 收益率回落催化。"
+    else:
+        headline = "黄金实时定调：金价与美元、美债收益率进入博弈震荡区，结合 10Y−2Y 期限利差变化与 SMC 订单块关键位高抛低吸。"
+
+    lines = [
+        f"【黄金与美元/美债实时投研简报｜{edition_date}】",
+        headline,
+        "",
+    ]
+    for it in macro_items:
+        lines.append(f"{it['index']}. {it['title']}（{it['code']}）{it['price_text']}")
+        lines.append(f"   · 趋势/利差：{it['wave_stage']} ｜ 宏观/通道：{it['channel_stage']}")
+        lines.append(f"   · 简评：{it['view']}")
+    lines.append("")
+    lines.append(f"实时生成时间：{generated_at}（按最新行情即时生成，仅供参考不构成投资建议）")
+
+    return {
+        "edition_date": edition_date,
+        "scheduled_time": "实时行情动态生成",
+        "generated_at": generated_at,
+        "headline": headline,
+        "items": macro_items,
+        "plain_text": "\n".join(lines),
     }

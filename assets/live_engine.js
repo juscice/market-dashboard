@@ -502,10 +502,12 @@
     };
   }
 
-  /* ==================== Live Wave ZigZag + 60D Channel Overlays ==================== */
+  /* ==================== Full Live Elliott Wave + 60D Channel Engine ==================== */
   function computeWaveOverlay(bars, decimals = 2, pctThreshold = 0.055) {
     const win = bars.slice(-Math.min(bars.length, 260));
-    if (win.length < 10) return { wave_stage: "待确认", pivots: [] };
+    if (win.length < 10) {
+      return { wave_stage: "窄幅蓄势（待确立主浪）", bias: "neutral", retrace_pct: 0, summary: "数据不足", fib_levels: {}, pivots: [] };
+    }
     const runZigzag = (th) => {
       const piv = [];
       let dir = 0, extIdx = 0, extPrice = Number(win[0].close);
@@ -536,19 +538,128 @@
       if (dir !== 0) piv.push({ date: win[extIdx].date, price: roundOpt(extPrice, decimals), type: dir === 1 ? "H" : "L", developing: true });
       return piv;
     };
+
     let pivs = runZigzag(pctThreshold);
     if (pivs.length < 4) pivs = runZigzag(pctThreshold * 0.65);
-    const recent = pivs.slice(-Math.min(pivs.length, 6));
-    const labels = recent.length >= 4 && recent[recent.length - 1].price < recent[recent.length - 2].price
-      ? ["0", "A", "B", "C"].slice(-Math.min(4, recent.length))
-      : ["0", "1", "2", "3", "4", "5"].slice(-recent.length);
-    const offset = recent.length - labels.length;
-    const chartPivots = recent.map((p, i) => ({ ...p, label: i >= offset ? labels[i - offset] : "" }));
+
     const lastBar = win[win.length - 1];
-    if (chartPivots.length && chartPivots[chartPivots.length - 1].date < lastBar.date) {
-      chartPivots.push({ date: lastBar.date, price: roundOpt(lastBar.close, decimals), type: "C", label: "现", developing: true });
+    const lastClose = Number(lastBar.close);
+    const lastDate = lastBar.date;
+
+    if (pivs.length < 3) {
+      const hi = Math.max(...win.map((b) => Number(b.high)));
+      const lo = Math.min(...win.map((b) => Number(b.low)));
+      return {
+        wave_stage: "窄幅蓄势（待确立主浪）",
+        bias: "neutral",
+        retrace_pct: 0,
+        summary: `近一年波幅收敛，区间 ${lo.toFixed(decimals)}–${hi.toFixed(decimals)}，等待有效突破确立新一轮推动浪方向。`,
+        fib_levels: {
+          f382: roundOpt(lo + 0.382 * (hi - lo), decimals),
+          f500: roundOpt(lo + 0.5 * (hi - lo), decimals),
+          f618: roundOpt(lo + 0.618 * (hi - lo), decimals),
+        },
+        pivots: [],
+      };
     }
-    return { pivots: chartPivots };
+
+    const recent = pivs.slice(-Math.min(pivs.length, 6));
+    const pLast = recent[recent.length - 1];
+    const pPrev = recent[recent.length - 2];
+    const pPrev2 = recent[recent.length - 3];
+
+    const legCurr = pLast.price - pPrev.price;
+    const legPrev = pPrev.price - pPrev2.price;
+    const currUp = legCurr > 0;
+    const retraceRatio = Math.abs(legPrev) > 1e-9 ? Math.abs(legCurr / legPrev) : 0;
+
+    const highs = recent.filter((p) => p.type === "H").map((p) => p.price);
+    const lows = recent.filter((p) => p.type === "L").map((p) => p.price);
+    const hh = highs.length >= 2 && highs[highs.length - 1] > highs[highs.length - 2];
+    const hl = lows.length >= 2 && lows[lows.length - 1] > lows[lows.length - 2];
+    const lh = highs.length >= 2 && highs[highs.length - 1] < highs[highs.length - 2];
+    const ll = lows.length >= 2 && lows[lows.length - 1] < lows[lows.length - 2];
+
+    let waveStage = "震荡整理";
+    let bias = "neutral";
+    let labels = [];
+    let detail = "";
+
+    if (currUp) {
+      if (hh && hl) {
+        waveStage = "上升推动浪（第3/5浪延伸）";
+        bias = "bullish";
+        labels = ["0", "1", "2", "3", "4", "5"].slice(-recent.length);
+        detail = `高低点逐级抬升，当前处于多头主升/延伸结构（本段较前段推进比 ${retraceRatio.toFixed(2)}x），回调不破前低 ${pPrev.price.toFixed(decimals)} 则维持多头浪型。`;
+      } else if (retraceRatio < 0.786 && lh) {
+        waveStage = "下跌途中的 B 浪反弹";
+        bias = "bearish";
+        labels = ["0", "A", "B"].slice(-Math.min(3, recent.length));
+        detail = `前序仍为高点下移结构，本轮自 ${pPrev.price.toFixed(decimals)} 反弹幅度约为前跌浪的 ${(retraceRatio * 100).toFixed(1)}%，未突破前高 ${pPrev2.price.toFixed(decimals)} 前按 B 浪反弹对待。`;
+      } else {
+        waveStage = "底部转折（疑似新1浪启动）";
+        bias = "bullish";
+        labels = ["A", "B", "C", "1"].slice(-Math.min(4, recent.length));
+        detail = `自低点 ${pPrev.price.toFixed(decimals)} 强力反攻，已收复前跌浪 ${(retraceRatio * 100).toFixed(1)}%，关注能否放量站稳前高 ${pPrev2.price.toFixed(decimals)} 确认1→3主升切换。`;
+      }
+    } else {
+      if (lh && ll) {
+        if (retraceRatio >= 1.0) {
+          waveStage = "主跌浪 / 延长 C 浪";
+          bias = "bearish";
+          labels = ["0", "A", "B", "C"].slice(-Math.min(4, recent.length));
+          detail = `高点与低点同步下移，本段下行幅度已达前段反弹的 ${retraceRatio.toFixed(2)}x（跌破前低），处于空头主跌/延长C浪；右侧需等待止跌底分型与反破前高。`;
+        } else {
+          waveStage = "下跌推动 / C 浪探底";
+          bias = "bearish";
+          labels = ["0", "A", "B", "C"].slice(-Math.min(4, recent.length));
+          detail = `自 ${pPrev.price.toFixed(decimals)} 回落并刷新阶段低点，空头浪型延续，重点观察下方斐波那契支撑区能否形成背离企稳。`;
+        }
+      } else if (hl || retraceRatio < 0.618) {
+        waveStage = "上升途中的 2/4 浪回踩";
+        bias = "neutral";
+        labels = ["0", "1", "2", "3", "4"].slice(-Math.min(5, recent.length));
+        detail = `前期呈多头波段，当前自 ${pPrev.price.toFixed(decimals)} 回撤约为前涨浪的 ${(retraceRatio * 100).toFixed(1)}%；若守住 0.618 关键位，仍属健康回调蓄势。`;
+      } else {
+        waveStage = "ABC 深度调整浪";
+        bias = "bearish";
+        labels = ["0", "A", "B", "C"].slice(-Math.min(4, recent.length));
+        detail = `自高点 ${pPrev.price.toFixed(decimals)} 回调幅度已达前涨浪的 ${(retraceRatio * 100).toFixed(1)}%，调整偏深，需防范演变为大级别下跌浪。`;
+      }
+    }
+
+    const hiRef = Math.max(pPrev.price, pPrev2.price, pLast.price);
+    const loRef = Math.min(pPrev.price, pPrev2.price, pLast.price);
+    const span = Math.max(hiRef - loRef, 1e-6);
+    const fibLevels = {
+      anchor_high: roundOpt(hiRef, decimals),
+      anchor_low: roundOpt(loRef, decimals),
+      f236: roundOpt(loRef + 0.236 * span, decimals),
+      f382: roundOpt(loRef + 0.382 * span, decimals),
+      f500: roundOpt(loRef + 0.5 * span, decimals),
+      f618: roundOpt(loRef + 0.618 * span, decimals),
+    };
+
+    const offset = recent.length - labels.length;
+    const chartPivots = recent.map((p, i) => ({
+      date: p.date,
+      price: p.price,
+      type: p.type,
+      label: i >= offset ? labels[i - offset] : "",
+      developing: Boolean(p.developing),
+    }));
+    if (chartPivots.length && chartPivots[chartPivots.length - 1].date < lastDate) {
+      chartPivots.push({ date: lastDate, price: roundOpt(lastClose, decimals), type: "C", label: "现", developing: true });
+    }
+
+    return {
+      wave_stage: waveStage,
+      bias,
+      retrace_pct: roundOpt(retraceRatio * 100, 1),
+      summary: detail,
+      fib_levels: fibLevels,
+      pivots: chartPivots,
+    };
   }
 
   function computeChannelOverlay(bars, windowLen = 60, decimals = 2) {
@@ -576,14 +687,35 @@
     const lastC = closes[w - 1];
     const posPct = Math.max(0, Math.min(100, ((lastC - dnE) / (upE - dnE)) * 100));
     const slopeAnn = yMean > 0 ? (slope * 242 / yMean) * 100 : 0;
-    const direction = slopeAnn >= 12 ? "上行通道" : slopeAnn <= -12 ? "下行通道" : "横向箱体通道";
+
+    let direction = "横向箱体通道", bias = "neutral";
+    if (slopeAnn >= 12) { direction = "上行通道"; bias = "bullish"; }
+    else if (slopeAnn <= -12) { direction = "下行通道"; bias = "bearish"; }
+
+    let posState = "中轨下方运行（通道偏弱）";
+    if (lastC > upE) posState = "突破上轨（短线超买/加速）";
+    else if (posPct >= 78) posState = "逼近上轨压力区";
+    else if (posPct >= 52) posState = "中轨上方运行（通道偏强）";
+    else if (posPct >= 22) posState = "中轨下方运行（通道偏弱）";
+    else if (lastC >= dnE) posState = "回踩下轨支撑区";
+    else posState = "跌破下轨（短线超卖/加速）";
+
+    const d20 = bars.slice(-Math.min(bars.length, 20));
+    const donchianHi = Math.max(...d20.map((b) => Number(b.high)));
+    const donchianLo = Math.min(...d20.map((b) => Number(b.low)));
+
     return {
       direction,
+      bias,
       slope_ann_pct: roundOpt(slopeAnn, 1),
       pos_pct: roundOpt(posPct, 1),
+      pos_state: posState,
       upper: roundOpt(upE, decimals),
       mid: roundOpt(midE, decimals),
       lower: roundOpt(dnE, decimals),
+      donchian_20_high: roundOpt(donchianHi, decimals),
+      donchian_20_low: roundOpt(donchianLo, decimals),
+      summary: `60日回归呈${direction}（年化斜率 ${slopeAnn >= 0 ? "+" : ""}${slopeAnn.toFixed(1)}%），下轨支撑 ${dnE.toFixed(decimals)} / 中轨 ${midE.toFixed(decimals)} / 上轨压力 ${upE.toFixed(decimals)}；现价处于通道 ${posPct.toFixed(0)}% 分位，${posState}。`,
       lines: {
         start_date: seg[0].date,
         end_date: seg[w - 1].date,
@@ -591,6 +723,330 @@
         mid: [roundOpt(midS, decimals), roundOpt(midE, decimals)],
         lower: [roundOpt(midS - band, decimals), roundOpt(dnE, decimals)],
       },
+    };
+  }
+
+  function _barsFromTechItem(item) {
+    if (!item || !item.dates || !item.ohlc) return [];
+    return item.dates.map((d, i) => ({
+      date: d,
+      open: item.ohlc[i][0],
+      close: item.ohlc[i][1],
+      low: item.ohlc[i][2],
+      high: item.ohlc[i][3],
+      volume: item.volumes ? item.volumes[i] : null,
+    }));
+  }
+
+  function _fmtSigned(v, d = 1) {
+    if (v == null || !Number.isFinite(v)) return "—";
+    return (v >= 0 ? "+" : "") + Number(v).toFixed(d);
+  }
+
+  function generateLiveBriefing(D, generatedAt) {
+    if (!D || !D.convergence || !D.national_team || !D.technical) return D && D.morning_briefing;
+    const ts = generatedAt || nowCstFull();
+    const editionDate = ts.slice(0, 10);
+    const cs = D.convergence.summary;
+    const gs = D.national_team.summary;
+
+    // 1. 股债收敛
+    let convTag, convBias, convView;
+    if (cs.is_currently_below) {
+      convTag = "极值跌破·高赔率区间";
+      convBias = "bullish";
+      convView = `沪深300全收益已跌破二级债基基准（剪刀差 ${_fmtSigned(cs.spread_pct, 1)}pct），历史上仅出现 ${cs.episode_count} 次同类极值，长期股债性价比处于右侧配置窗口。`;
+    } else if (cs.spread_pct < 60) {
+      convTag = "收敛蓄势·中性偏积极";
+      convBias = "neutral";
+      convView = `300全收益较二级债基领先 ${_fmtSigned(cs.spread_pct, 1)}pct（净值比 ${cs.ratio_300_to_bond2}x），处于中低溢价收敛带，可结合成长宽基通道企稳节奏分批布局。`;
+    } else {
+      convTag = "权益溢价·防波动回撤";
+      convBias = "neutral";
+      convView = `300全收益累计 ${_fmtSigned(cs.csi300_cum_pct, 1)}% 领先二级债基 ${_fmtSigned(cs.spread_pct, 1)}pct（净值比 ${cs.ratio_300_to_bond2}x），距历史${cs.episode_count}次跌破极值区尚有缓冲，注重波段节奏与回撤控制。`;
+    }
+
+    // 2. 国家队份额
+    const f1 = Number(gs.flow_1d_yi || 0);
+    const f5 = Number(gs.flow_5d_yi || 0);
+    const f20 = Number(gs.flow_20d_yi || 0);
+    let gjdTag, gjdBias, gjdView;
+    if (f1 > 50 || f5 > 100) {
+      gjdTag = "显著净申购·托底信号强";
+      gjdBias = "bullish";
+      gjdView = `16只重仓宽基ETF总份额升至 ${Number(gs.total_shares_yi).toFixed(1)} 亿份，单日估算净流入 ${_fmtSigned(f1, 1)} 亿元（近5日 ${_fmtSigned(f5, 1)} 亿），大资金低位托底意愿明显。`;
+    } else if (f1 < -50 || f5 < -100) {
+      gjdTag = "阶段净赎回·逢高兑现";
+      gjdBias = "bearish";
+      gjdView = `监控宽基ETF总份额 ${Number(gs.total_shares_yi).toFixed(1)} 亿份，单日净流出 ${_fmtSigned(f1, 1)} 亿元（近5日 ${_fmtSigned(f5, 1)} 亿），需留意权重宽基上方筹码消化压力。`;
+    } else {
+      gjdTag = "份额平稳·存量博弈";
+      gjdBias = "neutral";
+      gjdView = `监控宽基ETF总份额 ${Number(gs.total_shares_yi).toFixed(1)} 亿份，单日净申赎 ${_fmtSigned(f1, 1)} 亿元（近20日 ${_fmtSigned(f20, 1)} 亿），平准资金整体按兵不动，市场以存量结构轮动为主。`;
+    }
+
+    const buildTechCard = (idxNum, href, key, label) => {
+      const it = D.technical[key];
+      const dec = it.meta.decimals;
+      const u = it.meta.price_unit;
+      const s = it.summary;
+      const bars = _barsFromTechItem(it);
+      const w = (it.wave && it.wave.bias) ? it.wave : computeWaveOverlay(bars, dec, 0.06);
+      const ch = (it.channel && it.channel.pos_state) ? it.channel : computeChannelOverlay(bars, 60, dec);
+      it.wave = w;
+      it.channel = ch;
+
+      let action;
+      const fib50 = w.fib_levels && w.fib_levels.f500 != null ? w.fib_levels.f500.toFixed(dec) : ch.mid.toFixed(dec);
+      if (w.bias === "bearish" && ch.pos_pct <= 25) {
+        action = `波浪偏空叠加通道下轨超卖（分位 ${ch.pos_pct.toFixed(0)}%），切忌盲目追空，重点观察 ${ch.lower.toFixed(dec)} 支撑位是否出现底背离或内部 CHoCH 企稳信号。`;
+      } else if (w.bias === "bullish" && ch.pos_pct >= 78) {
+        action = `多头推动浪运行至通道上轨压力区（${ch.upper.toFixed(dec)}），顺势持有同时防范短线乖离回踩中轨 ${ch.mid.toFixed(dec)}。`;
+      } else if (w.bias === "bullish") {
+        action = `波浪与通道共振偏多，以中轨 ${ch.mid.toFixed(dec)} / 斐波那契 50% (${fib50}) 为防守参照。`;
+      } else {
+        action = `当前处于${w.wave_stage}与${ch.direction}共振区，上方阻力看中轨 ${ch.mid.toFixed(dec)}，下方防守看下轨 ${ch.lower.toFixed(dec)}。`;
+      }
+
+      return {
+        index: idxNum,
+        href,
+        key,
+        title: label,
+        code: it.meta.display_code,
+        price_text: `${Number(s.close).toFixed(dec)} ${u}`,
+        change_pct: s.change_pct,
+        bias: w.bias,
+        wave_stage: w.wave_stage,
+        channel_stage: `${ch.direction} · ${ch.pos_state.split("（")[0]}（${ch.pos_pct.toFixed(0)}%）`,
+        key_levels: {
+          support: ch.lower.toFixed(dec),
+          mid: ch.mid.toFixed(dec),
+          resistance: ch.upper.toFixed(dec),
+          fib50,
+        },
+        view: action,
+      };
+    };
+
+    const starCard = buildTechCard(3, "#sec-star50", "star50", "科创50");
+    const cybCard = buildTechCard(4, "#sec-cyb", "cyb", "创业板指");
+
+    const items = [
+      {
+        index: 1,
+        href: "#sec-convergence",
+        key: "convergence",
+        title: "股债波动收敛",
+        code: "H00300 vs 885007",
+        price_text: `剪刀差 ${_fmtSigned(cs.spread_pct, 1)} pct`,
+        change_pct: null,
+        bias: convBias,
+        wave_stage: `长周期估值锚 · 历史跌破 ${cs.episode_count} 次`,
+        channel_stage: convTag,
+        key_levels: {
+          support: "0% 跌破线",
+          mid: `300: ${_fmtSigned(cs.csi300_cum_pct, 0)}%`,
+          resistance: `债基: ${_fmtSigned(cs.bond2_cum_pct, 0)}%`,
+        },
+        view: convView,
+      },
+      {
+        index: 2,
+        href: "#sec-gjd",
+        key: "national_team",
+        title: "国家队宽基份额",
+        code: "16只核心宽基ETF",
+        price_text: `${Number(gs.total_shares_yi).toFixed(1)} 亿份`,
+        change_pct: null,
+        bias: gjdBias,
+        wave_stage: `单日净流入 ${_fmtSigned(f1, 1)} 亿元`,
+        channel_stage: gjdTag,
+        key_levels: {
+          support: `5日 ${_fmtSigned(f5, 0)}亿`,
+          mid: `20日 ${_fmtSigned(f20, 0)}亿`,
+          resistance: `规模 ${Number(gs.total_aum_yi).toFixed(0)}亿`,
+        },
+        view: gjdView,
+      },
+      starCard,
+      cybCard,
+    ];
+
+    const bearCnt = [starCard, cybCard].filter((c) => c.bias === "bearish").length;
+    const bullCnt = [starCard, cybCard].filter((c) => c.bias === "bullish").length;
+    let headline;
+    if (bearCnt === 2 && gjdBias === "bullish") {
+      headline = "核心定调：科创50与创业板指处于下行通道/调整浪探底区，但国家队宽基ETF出现显著净申购托底，重点观察通道下轨与波浪背离共振企稳机会。";
+    } else if (bearCnt === 2) {
+      headline = "核心定调：成长宽基仍处下行通道与空头调整浪内，多看少动、紧盯通道下轨支撑与内部结构 CHoCH 反转确认。";
+    } else if (bullCnt === 2) {
+      headline = "核心定调：成长宽基多头推动浪与上行通道共振延续，顺势跟踪同时留意通道上轨压力与中轨防守。";
+    } else {
+      headline = "核心定调：A股核心宽基呈结构性分化与箱体震荡，紧扣股债性价比、国家队资金动向与通道上下轨节奏操作。";
+    }
+
+    const lines = [`【A股实时波浪与通道投研简报｜${editionDate}】`, headline, ""];
+    for (const it of items) {
+      const chgStr = it.change_pct != null ? `（${_fmtSigned(it.change_pct, 2)}%）` : "";
+      lines.push(`${it.index}. ${it.title}（${it.code}）${it.price_text}${chgStr}`);
+      lines.push(`   · 波浪/周期：${it.wave_stage} ｜ 通道/资金：${it.channel_stage}`);
+      lines.push(`   · 关键参照：下沿/支撑 ${it.key_levels.support} ｜ 中轴 ${it.key_levels.mid} ｜ 上沿/压力 ${it.key_levels.resistance}`);
+      lines.push(`   · 简评：${it.view}`);
+    }
+    lines.push("", `实时生成时间：${ts}（按最新实时行情即时生成，仅供参考不构成投资建议）`);
+
+    return {
+      edition_date: editionDate,
+      scheduled_time: "实时行情动态生成",
+      generated_at: ts,
+      headline,
+      items,
+      plain_text: lines.join("\n"),
+    };
+  }
+
+  function generateGoldBriefing(D, generatedAt) {
+    if (!D || !D.technical || !D.technical.gold_xau) return D && D.gold_briefing;
+    const ts = generatedAt || nowCstFull();
+    const editionDate = ts.slice(0, 10);
+    const xau = D.technical.gold_xau;
+    const dec = xau.meta.decimals;
+    const sx = xau.summary;
+    const bars = _barsFromTechItem(xau);
+    const w = (xau.wave && xau.wave.bias) ? xau.wave : computeWaveOverlay(bars, dec, 0.045);
+    const ch = (xau.channel && xau.channel.pos_state) ? xau.channel : computeChannelOverlay(bars, 60, dec);
+    xau.wave = w;
+    xau.channel = ch;
+
+    const gStk = D.technical.gold_stock_etf && D.technical.gold_stock_etf.summary;
+    const gEtf = D.technical.gold_etf && D.technical.gold_etf.summary;
+    const etfHint = gStk && gEtf
+      ? ` 国内映射：黄金股ETF ${Number(gStk.close).toFixed(3)}（${_fmtSigned(gStk.change_pct, 2)}%），黄金ETF ${Number(gEtf.close).toFixed(3)}（${_fmtSigned(gEtf.change_pct, 2)}%）。`
+      : "";
+    const fib50 = w.fib_levels && w.fib_levels.f500 != null ? w.fib_levels.f500.toFixed(dec) : ch.mid.toFixed(dec);
+
+    let goldView;
+    if (w.bias === "bearish" && ch.pos_pct <= 25) {
+      goldView = `波浪偏空叠加通道下轨超卖（分位 ${ch.pos_pct.toFixed(0)}%），切忌盲目追空，重点观察 ${ch.lower.toFixed(dec)} 支撑位是否出现底背离或内部 CHoCH 企稳信号。`;
+    } else if (w.bias === "bullish" && ch.pos_pct >= 78) {
+      goldView = `多头推动浪运行至通道上轨压力区（${ch.upper.toFixed(dec)}），顺势持有同时防范短线乖离回踩中轨 ${ch.mid.toFixed(dec)}。`;
+    } else if (w.bias === "bullish") {
+      goldView = `波浪与通道共振偏多，以中轨 ${ch.mid.toFixed(dec)} / 斐波那契 50% (${fib50}) 为防守参照。`;
+    } else {
+      goldView = `当前处于${w.wave_stage}与${ch.direction}共振区，上方阻力看中轨 ${ch.mid.toFixed(dec)}，下方防守看下轨 ${ch.lower.toFixed(dec)}。`;
+    }
+    goldView += etfHint;
+
+    const items = [
+      {
+        index: 1,
+        href: "#sec-gold-main",
+        key: "gold_xau",
+        title: "伦敦金现 (XAU/USD)",
+        code: xau.meta.display_code,
+        price_text: `${Number(sx.close).toFixed(dec)} 美元/盎司`,
+        change_pct: sx.change_pct,
+        bias: w.bias,
+        wave_stage: w.wave_stage,
+        channel_stage: `${ch.direction} · ${ch.pos_state.split("（")[0]}（${ch.pos_pct.toFixed(0)}%）`,
+        key_levels: {
+          support: ch.lower.toFixed(dec),
+          mid: ch.mid.toFixed(dec),
+          resistance: ch.upper.toFixed(dec),
+        },
+        view: goldView,
+      },
+    ];
+
+    const seriesMap = (D.gold_macro && D.gold_macro.series) || {};
+    const dxy = seriesMap.dxy;
+    const us10y = seriesMap.us10y;
+    const us2y = seriesMap.us2y;
+    const sp = D.gold_macro && D.gold_macro.spread_10y_2y;
+    let macroPressure = 0;
+
+    if (dxy && dxy.summary) {
+      const sd = dxy.summary;
+      const r20 = Number(sd.ret_20d || 0);
+      let dxyBias = "neutral", dxyTag = "美元震荡 · 中性影响";
+      if (r20 >= 1.5) { dxyBias = "bearish"; dxyTag = "美元走强 · 压制金价"; macroPressure += 1; }
+      else if (r20 <= -1.5) { dxyBias = "bullish"; dxyTag = "美元走弱 · 利好金价"; macroPressure -= 1; }
+      items.push({
+        index: 2,
+        href: "#sec-gold-macro",
+        key: "dxy",
+        title: "美元指数 (DXY)",
+        code: "100.UDI",
+        price_text: Number(sd.close).toFixed(2),
+        change_pct: sd.change_pct,
+        bias: dxyBias,
+        wave_stage: sd.ret_20d != null ? `20日 ${_fmtSigned(sd.ret_20d, 2)}%` : "实时跟踪",
+        channel_stage: dxyTag,
+        key_levels: {
+          support: sd.ret_5d != null ? `5日 ${_fmtSigned(sd.ret_5d, 2)}%` : "—",
+          mid: `现值 ${Number(sd.close).toFixed(2)}`,
+          resistance: sd.ret_60d != null ? `60日 ${_fmtSigned(sd.ret_60d, 2)}%` : "—",
+        },
+        view: `美元指数最新报 ${Number(sd.close).toFixed(2)}（日变动 ${_fmtSigned(sd.change_pct, 2)}%），近20个交易日变动 ${_fmtSigned(r20, 2)}%；美元强弱直接影响以美元计价的国际金价定价中枢。`,
+      });
+    }
+
+    if (us10y && us2y && us10y.summary && us2y.summary) {
+      const s10 = us10y.summary;
+      const s2 = us2y.summary;
+      const bp20_10 = Number(s10.chg_20d_bp || 0);
+      const bp20_2 = Number(s2.chg_20d_bp || 0);
+      let yBias = "neutral", yTag = "美债利率窄幅震荡";
+      if (bp20_10 >= 15) { yBias = "bearish"; yTag = "美债利率上行 · 抬升机会成本"; macroPressure += 1; }
+      else if (bp20_10 <= -15) { yBias = "bullish"; yTag = "美债利率回落 · 利好无息黄金"; macroPressure -= 1; }
+      const spTxt = sp ? `10Y−2Y利差 ${_fmtSigned(sp.latest_bp, 1)}bp（${sp.is_inverted ? "倒挂" : "正斜率"}）` : "实时跟踪";
+      items.push({
+        index: 3,
+        href: "#sec-gold-macro",
+        key: "us_yields",
+        title: "美国10Y / 2Y国债收益率",
+        code: "US10Y / US2Y",
+        price_text: `${Number(s10.close).toFixed(3)}% / ${Number(s2.close).toFixed(3)}%`,
+        change_pct: s10.change_pct,
+        bias: yBias,
+        wave_stage: spTxt,
+        channel_stage: yTag,
+        key_levels: {
+          support: `10Y: ${Number(s10.close).toFixed(3)}%`,
+          mid: `2Y: ${Number(s2.close).toFixed(3)}%`,
+          resistance: `10Y 20日 ${_fmtSigned(bp20_10, 0)}bp`,
+        },
+        view: `美国10年期国债收益率报 ${Number(s10.close).toFixed(3)}%（日变动 ${_fmtSigned(s10.change_bp, 1)}bp，近20日 ${_fmtSigned(bp20_10, 1)}bp），2年期报 ${Number(s2.close).toFixed(3)}%（近20日 ${_fmtSigned(bp20_2, 1)}bp），${spTxt}。`,
+      });
+    }
+
+    let headline;
+    if (w.bias === "bullish" && macroPressure <= 0) {
+      headline = "黄金实时定调：伦敦金现技术结构偏多且美元/美债利率未构成强压制，宏观与技术共振向好，顺势跟踪通道中轨与前高突破。";
+    } else if (w.bias === "bearish" && macroPressure >= 1) {
+      headline = "黄金实时定调：美元与美债收益率偏强叠加金价处于调整浪/下行通道，短线承压，重点观察通道下轨与利率拐点共振。";
+    } else if (w.bias === "bearish") {
+      headline = "黄金实时定调：金价技术面处于调整浪/回调阶段，紧盯 60 日通道下轨与美债 10Y/2Y 收益率回落催化。";
+    } else {
+      headline = "黄金实时定调：金价与美元、美债收益率进入博弈震荡区，结合 10Y−2Y 期限利差变化与 SMC 订单块关键位高抛低吸。";
+    }
+
+    const lines = [`【黄金与美元/美债实时投研简报｜${editionDate}】`, headline, ""];
+    for (const it of items) {
+      lines.push(`${it.index}. ${it.title}（${it.code}）${it.price_text}`);
+      lines.push(`   · 趋势/利差：${it.wave_stage} ｜ 宏观/通道：${it.channel_stage}`);
+      lines.push(`   · 简评：${it.view}`);
+    }
+    lines.push("", `实时生成时间：${ts}（按最新实时行情即时生成，仅供参考不构成投资建议）`);
+
+    return {
+      edition_date: editionDate,
+      scheduled_time: "实时行情动态生成",
+      generated_at: ts,
+      headline,
+      items,
+      plain_text: lines.join("\n"),
     };
   }
 
@@ -755,6 +1211,88 @@
     return bars.length > count ? bars.slice(-count) : bars;
   }
 
+  async function fetchSinaForexKline(symbol = "DINIW", count = 520) {
+    const varName = "__SINA_FX_" + symbol + "_" + Math.floor(Math.random() * 100000);
+    const url = `https://vip.stock.finance.sina.com.cn/forex/api/jsonp.php/window.${varName}=/NewForexService.getDayKLine?symbol=${encodeURIComponent(symbol)}&_=${Date.now()}`;
+    const rawStr = await loadJsonpVar(url, varName, 9000);
+    try { delete global[varName]; } catch (_) {}
+    if (typeof rawStr !== "string" || !rawStr.trim()) throw new Error("empty sina forex");
+    const bars = [];
+    for (const seg of rawStr.split("|")) {
+      const p = seg.trim().split(",");
+      if (p.length < 5 || !p[0]) continue;
+      const o = Number(p[1]), l = Number(p[2]), h = Number(p[3]), c = Number(p[4]);
+      if (Math.min(o, l, h, c) <= 0) continue;
+      bars.push({ date: p[0], open: o, low: Math.min(l, o, c), high: Math.max(h, o, c), close: c, volume: null });
+    }
+    bars.sort((a, b) => a.date.localeCompare(b.date));
+    return bars.length > count ? bars.slice(-count) : bars;
+  }
+
+  function loadJsonpCallback(urlBase, cbParam = "callback", timeoutMs = 9000) {
+    return new Promise((resolve, reject) => {
+      const cbName = "__EM_JSONP_" + Math.floor(Math.random() * 1000000) + "_" + Date.now();
+      const script = document.createElement("script");
+      let done = false;
+      const cleanup = () => {
+        try { delete global[cbName]; } catch (_) { global[cbName] = undefined; }
+        if (script.parentNode) script.parentNode.removeChild(script);
+      };
+      const timer = setTimeout(() => {
+        if (!done) {
+          done = true;
+          cleanup();
+          reject(new Error("JSONP callback timeout"));
+        }
+      }, timeoutMs);
+      global[cbName] = (payload) => {
+        if (done) return;
+        done = true;
+        clearTimeout(timer);
+        cleanup();
+        resolve(payload);
+      };
+      script.onerror = () => {
+        if (done) return;
+        done = true;
+        clearTimeout(timer);
+        cleanup();
+        reject(new Error("JSONP callback error"));
+      };
+      const sep = urlBase.includes("?") ? "&" : "?";
+      script.src = `${urlBase}${sep}${cbParam}=${cbName}&_=${Date.now()}`;
+      script.async = true;
+      document.head.appendChild(script);
+    });
+  }
+
+  async function fetchEastmoneyDatacenterYields(count = 520) {
+    const url = `https://datacenter-web.eastmoney.com/api/data/v1/get?reportName=RPTA_WEB_TREASURYYIELD&columns=SOLAR_DATE,EMG00001306,EMG00001308&sortColumns=SOLAR_DATE&sortTypes=-1&pageSize=${count + 60}&pageNumber=1`;
+    const payload = await loadJsonpCallback(url, "callback", 9000);
+    const rows = (payload && payload.result && payload.result.data) || [];
+    const us10y = [];
+    const us2y = [];
+    for (const r of rows) {
+      const dt = String(r.SOLAR_DATE || "").slice(0, 10);
+      if (dt.length !== 10) continue;
+      const v10 = Number(r.EMG00001308);
+      const v2 = Number(r.EMG00001306);
+      if (Number.isFinite(v10) && v10 > 0) {
+        us10y.push({ date: dt, open: v10, high: v10, low: v10, close: v10, volume: null });
+      }
+      if (Number.isFinite(v2) && v2 > 0) {
+        us2y.push({ date: dt, open: v2, high: v2, low: v2, close: v2, volume: null });
+      }
+    }
+    us10y.sort((a, b) => a.date.localeCompare(b.date));
+    us2y.sort((a, b) => a.date.localeCompare(b.date));
+    if (!us10y.length || !us2y.length) throw new Error("empty datacenter yields");
+    return {
+      us10y: us10y.slice(-count),
+      us2y: us2y.slice(-count),
+    };
+  }
+
   async function fetchEastmoneyKline(secid, count = 520) {
     const url = `https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=${encodeURIComponent(secid)}&fields1=f1,f2,f3&fields2=f51,f52,f53,f54,f55,f56&klt=101&fqt=0&lmt=${count}&end=20500101&_=${Date.now()}`;
     const resp = await fetchWithTimeout(url, 8000);
@@ -766,32 +1304,121 @@
       const p = line.split(",");
       const o = Number(p[1]), c = Number(p[2]), h = Number(p[3]), l = Number(p[4]), v = Number(p[5] || 0);
       if (Math.min(o, c, h, l) <= 0) continue;
-      bars.push({ date: p[0], open: o, close: c, high: h, low: l, volume: v > 0 ? v : null });
+      bars.push({ date: p[0], open: o, close: c, high: Math.max(h, o, c), low: Math.min(l, o, c), volume: v > 0 ? v : null });
     }
     bars.sort((a, b) => a.date.localeCompare(b.date));
     return bars;
   }
 
+  function unixToCstDate(ts) {
+    if (!Number.isFinite(ts) || ts < 1e9) return null;
+    const d = new Date(ts * 1000 + 8 * 3600000);
+    const pad = (n) => String(n).padStart(2, "0");
+    return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
+  }
+
   async function fetchEastmoneyQuotes(secids) {
-    const url = `https://push2.eastmoney.com/api/qt/ulist.np/get?fltt=2&fields=f2,f3,f4,f12,f14,f15,f16,f17,f18&secids=${encodeURIComponent(secids.join(","))}&_=${Date.now()}`;
+    const url = `https://push2.eastmoney.com/api/qt/ulist.np/get?fltt=2&fields=f2,f3,f4,f12,f14,f15,f16,f17,f18,f124&secids=${secids.join(",")}&_=${Date.now()}`;
     const resp = await fetchWithTimeout(url, 7000);
     const json = await resp.json();
     const diff = (json && json.data && json.data.diff) || [];
     const out = {};
+    const numOpt = (v) => (v !== "-" && v != null && v !== "" && Number.isFinite(Number(v)) ? Number(v) : null);
     for (const row of diff) {
       if (row && row.f12 && row.f2 !== "-") {
         out[row.f12] = {
-          price: Number(row.f2),
-          change_pct: Number(row.f3),
-          change_amt: Number(row.f4),
-          high: Number(row.f15),
-          low: Number(row.f16),
-          open: Number(row.f17),
-          last_close: Number(row.f18),
+          price: numOpt(row.f2),
+          change_pct: numOpt(row.f3),
+          change_amt: numOpt(row.f4),
+          high: numOpt(row.f15),
+          low: numOpt(row.f16),
+          open: numOpt(row.f17),
+          last_close: numOpt(row.f18),
+          quote_date: unixToCstDate(Number(row.f124)),
         };
       }
     }
     return out;
+  }
+
+  function buildMacroSeriesItem(prevMeta, bars, quote, sourceLabel) {
+    const dec = (prevMeta && prevMeta.decimals) || 2;
+    const isYield = prevMeta && prevMeta.unit === "%";
+    let merged = bars.slice();
+    if (quote && quote.price > 0 && merged.length) {
+      const lastDate = merged[merged.length - 1].date;
+      const qDate = quote.quote_date && quote.quote_date >= lastDate ? quote.quote_date : lastDate;
+      merged = mergeIntradayBar(merged, { ...quote, quote_date: qDate });
+    }
+    const dates = merged.map((b) => b.date);
+    const closes = merged.map((b) => roundOpt(b.close, dec));
+    const ohlc = merged.map((b) => [roundOpt(b.open, dec), roundOpt(b.close, dec), roundOpt(b.low, dec), roundOpt(b.high, dec)]);
+    const n = closes.length;
+    const lastC = closes[n - 1];
+    const prevC = n >= 2 ? closes[n - 2] : lastC;
+    let chgAmt = roundOpt(lastC - prevC, dec);
+    let chgPct = prevC > 0 ? roundOpt(((lastC / prevC) - 1) * 100, 2) : 0;
+    if (quote && quote.change_pct != null) chgPct = roundOpt(quote.change_pct, 2);
+    if (quote && quote.change_amt != null) chgAmt = roundOpt(quote.change_amt, dec);
+
+    const retN = (k) => (n > k && closes[n - 1 - k] > 0 ? roundOpt(((lastC / closes[n - 1 - k]) - 1) * 100, 2) : null);
+    const diffBp = (k) => (isYield && n > k ? roundOpt((lastC - closes[n - 1 - k]) * 100, 1) : null);
+
+    return {
+      meta: {
+        ...prevMeta,
+        source: sourceLabel,
+        bar_count: n,
+        date_range: [dates[0], dates[n - 1]],
+      },
+      dates,
+      closes,
+      ohlc,
+      summary: {
+        latest_date: dates[n - 1],
+        close: lastC,
+        change_amt: chgAmt,
+        change_pct: chgPct,
+        change_bp: isYield ? roundOpt(chgAmt * 100, 1) : null,
+        ret_5d: retN(5),
+        ret_20d: retN(20),
+        ret_60d: retN(60),
+        chg_5d_bp: diffBp(5),
+        chg_20d_bp: diffBp(20),
+        chg_60d_bp: diffBp(60),
+      },
+    };
+  }
+
+  function computeSpread10y2y(us10y, us2y) {
+    if (!us10y || !us2y || !us10y.dates || !us2y.dates) return null;
+    const m10 = {};
+    const m2 = {};
+    us10y.dates.forEach((d, i) => { m10[d] = us10y.closes[i]; });
+    us2y.dates.forEach((d, i) => { m2[d] = us2y.closes[i]; });
+    const allDates = Array.from(new Set([...us10y.dates, ...us2y.dates])).sort();
+    const dates = [];
+    const spread_bp = [];
+    let l10 = null, l2 = null;
+    for (const d of allDates) {
+      if (m10[d] != null) l10 = m10[d];
+      if (m2[d] != null) l2 = m2[d];
+      if (l10 != null && l2 != null) {
+        dates.push(d);
+        spread_bp.push(roundOpt((l10 - l2) * 100, 1));
+      }
+    }
+    if (!dates.length) return null;
+    const cur = spread_bp[spread_bp.length - 1];
+    const prev = spread_bp.length >= 2 ? spread_bp[spread_bp.length - 2] : cur;
+    return {
+      dates,
+      spread_bp,
+      latest_date: dates[dates.length - 1],
+      latest_bp: cur,
+      change_bp: roundOpt(cur - prev, 1),
+      is_inverted: cur < 0,
+    };
   }
 
   function mergeIntradayBar(bars, quote) {
@@ -867,33 +1494,156 @@
       } catch (e) {
         failed.push("燕东微(" + e.message + ")");
       }
+    } else if (pageMode === "gold") {
+      // Standalone Gold + DXY + US10Y/US2Y Yield Dashboard
+      const fetchXauBars = () =>
+        fetchSinaGlobalFuturesKline("XAU", 520).catch(() => fetchEastmoneyKline("122.XAU", 520));
+      const fetchDxyBars = () =>
+        fetchEastmoneyKline("100.UDI", 520).catch(() => fetchSinaForexKline("DINIW", 520));
+      let dcYieldPromise = null;
+      const getDcYields = () => {
+        if (!dcYieldPromise) dcYieldPromise = fetchEastmoneyDatacenterYields(520);
+        return dcYieldPromise;
+      };
+      const fetchUs10yBars = () =>
+        fetchEastmoneyKline("171.US10Y", 520).catch(() => getDcYields().then((d) => d.us10y));
+      const fetchUs2yBars = () =>
+        fetchEastmoneyKline("171.US2Y", 520).catch(() => getDcYields().then((d) => d.us2y));
+
+      const [
+        tqRes,
+        goldXauRes,
+        goldStockEtfRes,
+        goldEtfRes,
+        dxyRes,
+        us10yRes,
+        us2yRes,
+        emQRes,
+      ] = await Promise.allSettled([
+        fetchTencentQuotes(["sh517520", "sh518880"]),
+        fetchXauBars(),
+        fetchTencentKline("sh517520", 520, "qfq"),
+        fetchTencentKline("sh518880", 520, "qfq"),
+        fetchDxyBars(),
+        fetchUs10yBars(),
+        fetchUs2yBars(),
+        fetchEastmoneyQuotes(["122.XAU", "100.UDI", "171.US10Y", "171.US2Y"]),
+      ]);
+
+      const tq = tqRes.status === "fulfilled" ? tqRes.value : {};
+      const emQ = emQRes.status === "fulfilled" ? emQRes.value : {};
+
+      // 1. 伦敦金现 XAU/USD
+      if (goldXauRes.status === "fulfilled") {
+        const prev = D.technical.gold_xau.meta;
+        let bars = goldXauRes.value;
+        const qXau = emQ.XAU;
+        if (qXau && qXau.price > 0) {
+          const lastD = bars[bars.length - 1].date;
+          const qDate = qXau.quote_date && qXau.quote_date >= lastD ? qXau.quote_date : lastD;
+          bars = mergeIntradayBar(bars, { ...qXau, quote_date: qDate });
+        }
+        D.technical.gold_xau = analyzeTechnicalSeries(bars, { ...prev, source: "新浪外盘 + 伦敦金现实时直连" }, prev.decimals);
+        if (qXau && Number.isFinite(qXau.change_pct)) {
+          D.technical.gold_xau.summary.change_pct = roundOpt(qXau.change_pct, 2);
+        }
+        synced.push("伦敦金现实时");
+      } else {
+        failed.push("伦敦金现");
+      }
+
+      // 2. 黄金股ETF sh517520
+      if (goldStockEtfRes.status === "fulfilled") {
+        const prev = D.technical.gold_stock_etf.meta;
+        const merged = mergeIntradayBar(goldStockEtfRes.value, tq.sh517520);
+        D.technical.gold_stock_etf = analyzeTechnicalSeries(merged, { ...prev, source: "腾讯财经实时直连 (前复权)" }, prev.decimals);
+        if (tq.sh517520 && Number.isFinite(tq.sh517520.change_pct)) {
+          D.technical.gold_stock_etf.summary.change_pct = roundOpt(tq.sh517520.change_pct, 2);
+        }
+        synced.push("黄金股ETF实时");
+      } else {
+        failed.push("黄金股ETF");
+      }
+
+      // 3. 黄金ETF sh518880
+      if (goldEtfRes.status === "fulfilled") {
+        const prev = D.technical.gold_etf.meta;
+        const merged = mergeIntradayBar(goldEtfRes.value, tq.sh518880);
+        D.technical.gold_etf = analyzeTechnicalSeries(merged, { ...prev, source: "腾讯财经实时直连 (前复权)" }, prev.decimals);
+        if (tq.sh518880 && Number.isFinite(tq.sh518880.change_pct)) {
+          D.technical.gold_etf.summary.change_pct = roundOpt(tq.sh518880.change_pct, 2);
+        }
+        synced.push("黄金ETF实时");
+      } else {
+        failed.push("黄金ETF");
+      }
+
+      // 4. Macro series: DXY / US10Y / US2Y
+      D.gold_macro = D.gold_macro || { latest_date: "", series: {}, spread_10y_2y: null };
+      D.gold_macro.series = D.gold_macro.series || {};
+
+      const defaultMeta = {
+        dxy: { key: "dxy", title: "美元指数 (DXY)", code: "UDI", display_code: "DXY", secid: "100.UDI", unit: "点", decimals: 2 },
+        us10y: { key: "us10y", title: "美国10年期国债收益率", code: "US10Y", display_code: "US10Y", secid: "171.US10Y", unit: "%", decimals: 3 },
+        us2y: { key: "us2y", title: "美国2年期国债收益率", code: "US2Y", display_code: "US2Y", secid: "171.US2Y", unit: "%", decimals: 3 },
+      };
+
+      if (dxyRes.status === "fulfilled") {
+        const prevMeta = (D.gold_macro.series.dxy && D.gold_macro.series.dxy.meta) || defaultMeta.dxy;
+        D.gold_macro.series.dxy = buildMacroSeriesItem(prevMeta, dxyRes.value, emQ.UDI, "东方财富实时直连 (DXY)");
+        synced.push("美元指数实时");
+      } else {
+        failed.push("美元指数");
+      }
+
+      if (us10yRes.status === "fulfilled") {
+        const prevMeta = (D.gold_macro.series.us10y && D.gold_macro.series.us10y.meta) || defaultMeta.us10y;
+        D.gold_macro.series.us10y = buildMacroSeriesItem(prevMeta, us10yRes.value, emQ.US10Y, "东方财富实时直连 (US10Y)");
+        synced.push("美债10Y实时");
+      } else {
+        failed.push("美债10Y");
+      }
+
+      if (us2yRes.status === "fulfilled") {
+        const prevMeta = (D.gold_macro.series.us2y && D.gold_macro.series.us2y.meta) || defaultMeta.us2y;
+        D.gold_macro.series.us2y = buildMacroSeriesItem(prevMeta, us2yRes.value, emQ.US2Y, "东方财富实时直连 (US2Y)");
+        synced.push("美债2Y实时");
+      } else {
+        failed.push("美债2Y");
+      }
+
+      D.gold_macro.spread_10y_2y = computeSpread10y2y(D.gold_macro.series.us10y, D.gold_macro.series.us2y);
+      const macroDates = Object.values(D.gold_macro.series)
+        .map((m) => m && m.summary && m.summary.latest_date)
+        .filter(Boolean);
+      if (macroDates.length) D.gold_macro.latest_date = macroDates.sort().pop();
+
+      const allGoldDates = [
+        ...["gold_xau", "gold_stock_etf", "gold_etf"].map((k) => D.technical[k] && D.technical[k].summary && D.technical[k].summary.latest_date),
+        D.gold_macro.latest_date,
+      ].filter(Boolean);
+      if (allGoldDates.length) D.meta.latest_market_date = allGoldDates.sort().pop();
+
+      // Always regenerate live gold briefing from freshest data!
+      D.gold_briefing = generateGoldBriefing(D, syncTime);
     } else {
-      // Market 5-item dashboard: fetch all live feeds in parallel!
+      // Main Market 4-item dashboard (Gold separated to gold.html): fetch live feeds in parallel!
       const etfCodes = (D.national_team && D.national_team.etfs ? D.national_team.etfs.map((e) => e.code) : []);
-      const quoteCodes = ["sh000300", "sh000688", "sz399006", "sh517520", "sh518880", ...etfCodes];
+      const quoteCodes = ["sh000300", "sh000688", "sz399006", ...etfCodes];
 
       const [
         quotesRes,
         star50Res,
         cybRes,
-        goldStockEtfRes,
-        goldEtfRes,
         csi300Res,
-        goldXauRes,
-        emXauQRes,
       ] = await Promise.allSettled([
         fetchTencentQuotes(quoteCodes),
         fetchTencentKline("sh000688", 520, "qfq"),
         fetchTencentKline("sz399006", 520, "qfq"),
-        fetchTencentKline("sh517520", 520, "qfq"),
-        fetchTencentKline("sh518880", 520, "qfq"),
         fetchTencentKline("sh000300", 60, ""),
-        fetchSinaGlobalFuturesKline("XAU", 520),
-        fetchEastmoneyQuotes(["122.XAU"]),
       ]);
 
       const tq = quotesRes.status === "fulfilled" ? quotesRes.value : {};
-      const emXauQ = emXauQRes.status === "fulfilled" ? emXauQRes.value : {};
 
       // 1. Update Module 1 (沪深300全收益 tail extension via live sh000300 daily returns)
       if (csi300Res.status === "fulfilled" && D.convergence && D.convergence.dates.length) {
@@ -901,7 +1651,6 @@
           const c = D.convergence;
           let bars300 = mergeIntradayBar(csi300Res.value, tq.sh000300);
           const lastBaseDate = c.dates[c.dates.length - 1];
-          // Build date->close map for sh000300
           const idxAnchor = bars300.findIndex((b) => b.date === lastBaseDate);
           if (idxAnchor >= 0 && idxAnchor < bars300.length - 1) {
             let curNav300 = c.csi300_tri_nav[c.csi300_tri_nav.length - 1];
@@ -932,7 +1681,6 @@
             c.summary.is_currently_below =
               c.csi300_tri_nav[c.csi300_tri_nav.length - 1] < c.bond2_nav[c.bond2_nav.length - 1];
           } else if (tq.sh000300 && tq.sh000300.quote_date === lastBaseDate && c.dates.length >= 2) {
-            // Update today's intraday live point on the last date
             const prevNav = c.csi300_tri_nav[c.csi300_tri_nav.length - 2];
             const liveNav = prevNav * (1 + tq.sh000300.change_pct / 100);
             const livePct = roundOpt((liveNav - 1) * 100, 2);
@@ -1005,56 +1753,15 @@
         failed.push("创业板指");
       }
 
-      // 5A. Update Module 5 (伦敦金现 XAU/USD via Sina Global JSONP + EastMoney 122.XAU live quote)
-      if (goldXauRes.status === "fulfilled") {
-        const prev = D.technical.gold_xau.meta;
-        let bars = goldXauRes.value;
-        const qXau = emXauQ.XAU;
-        if (qXau && qXau.price > 0) {
-          const todayStr = syncTime.slice(0, 10);
-          bars = mergeIntradayBar(bars, { ...qXau, quote_date: bars[bars.length - 1].date >= todayStr ? bars[bars.length - 1].date : todayStr });
-        }
-        D.technical.gold_xau = analyzeTechnicalSeries(bars, { ...prev, source: "新浪外盘 + 伦敦金现实时直连" }, prev.decimals);
-        if (qXau && Number.isFinite(qXau.change_pct)) {
-          D.technical.gold_xau.summary.change_pct = roundOpt(qXau.change_pct, 2);
-        }
-        synced.push("伦敦金现实时");
-      } else {
-        failed.push("伦敦金现");
-      }
-
-      // 5B. Update Module 5 (黄金股ETF sh517520)
-      if (goldStockEtfRes.status === "fulfilled") {
-        const prev = D.technical.gold_stock_etf.meta;
-        const merged = mergeIntradayBar(goldStockEtfRes.value, tq.sh517520);
-        D.technical.gold_stock_etf = analyzeTechnicalSeries(merged, { ...prev, source: "腾讯财经实时直连 (前复权)" }, prev.decimals);
-        if (tq.sh517520 && Number.isFinite(tq.sh517520.change_pct)) {
-          D.technical.gold_stock_etf.summary.change_pct = roundOpt(tq.sh517520.change_pct, 2);
-        }
-        synced.push("黄金股ETF实时");
-      } else {
-        failed.push("黄金股ETF");
-      }
-
-      // 5C. Update Module 5 (黄金ETF sh518880)
-      if (goldEtfRes.status === "fulfilled") {
-        const prev = D.technical.gold_etf.meta;
-        const merged = mergeIntradayBar(goldEtfRes.value, tq.sh518880);
-        D.technical.gold_etf = analyzeTechnicalSeries(merged, { ...prev, source: "腾讯财经实时直连 (前复权)" }, prev.decimals);
-        if (tq.sh518880 && Number.isFinite(tq.sh518880.change_pct)) {
-          D.technical.gold_etf.summary.change_pct = roundOpt(tq.sh518880.change_pct, 2);
-        }
-        synced.push("黄金ETF实时");
-      } else {
-        failed.push("黄金ETF");
-      }
-
-      const techDates = ["star50", "cyb", "gold_xau", "gold_stock_etf", "gold_etf"]
+      const techDates = ["star50", "cyb"]
         .map((k) => D.technical[k] && D.technical[k].summary && D.technical[k].summary.latest_date)
         .filter(Boolean);
       if (techDates.length) {
         D.meta.latest_market_date = techDates.sort().pop();
       }
+
+      // Always regenerate live briefing from freshest market data!
+      D.morning_briefing = generateLiveBriefing(D, syncTime);
     }
 
     D.meta.live_sync = {
@@ -1070,6 +1777,8 @@
   global.LiveMarketEngine = {
     syncLiveMarketData,
     analyzeTechnicalSeries,
+    generateLiveBriefing,
+    generateGoldBriefing,
     nowCstFull,
   };
 })(window);

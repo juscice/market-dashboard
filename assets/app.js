@@ -69,17 +69,37 @@
   let BASE_DATA = null;
   let canServerRefresh = false;
   let liveSyncInFlight = false;
-  let autoPollTimer = null;
+  let autoRefreshTimer = null;
+  let lastLiveSyncMs = 0;
+  const AUTO_REFRESH_MS = 60000;
   const isFileMode = location.protocol === "file:";
   const isLocalHost = ["127.0.0.1", "localhost", "::1"].includes(location.hostname);
   const PAGE_MODE = (document.body && document.body.dataset && document.body.dataset.page) || "market";
+
+  // Persistent UI state across 1-minute live auto-refreshes
+  const UI_STATE = {
+    briefingOpen: false,
+    conv: { scaleMode: "linear", showCsiBond: false, showSpread: true },
+    gjd: { mode: "shares_flow", selectedEtf: null, sortK: "flow1", asc: false },
+    goldActiveKey: "gold_xau",
+    goldMacro: { bars: 130, mode: "raw", invert: false },
+    tech: {
+      star50: { bars: 130, sub: "macd", ma: true, boll: false, wave: true, channel: true, structure: true, ob: true, fvg: false, pd: true, eq: false },
+      cyb: { bars: 130, sub: "macd", ma: true, boll: false, wave: true, channel: true, structure: true, ob: true, fvg: false, pd: true, eq: false },
+      gold: {
+        bars: 130, sub: "macd", ma: true, boll: false, wave: true, channel: true, structure: true, ob: true, fvg: false, pd: true, eq: false,
+        overlayDxy: true, overlayUs10y: true, overlayUs2y: true, invertMacro: false,
+      },
+      yandongwei: { bars: 130, sub: "macd", ma: true, boll: false, wave: true, channel: true, structure: true, ob: true, fvg: false, pd: true, eq: false },
+    },
+  };
 
   async function detectHostCapabilities() {
     const shareBtn = $("shareBtn");
     if (isFileMode) {
       if (shareBtn) {
         shareBtn.textContent = "📄 单文件版";
-        shareBtn.title = "当前为单文件网页，联网时同样支持自动拉取实时行情";
+        shareBtn.title = "当前为单文件网页，联网时同样支持打开即更新与每分钟自动刷新";
       }
       return;
     }
@@ -96,8 +116,24 @@
     }
   }
 
-  async function runLiveSync(silent = false) {
-    if (!BASE_DATA || !window.LiveMarketEngine || liveSyncInFlight) return false;
+  function resetMinuteAutoRefresh() {
+    if (autoRefreshTimer) clearInterval(autoRefreshTimer);
+    autoRefreshTimer = setInterval(() => {
+      if (!document.hidden) {
+        runLiveSync(true);
+      }
+    }, AUTO_REFRESH_MS);
+  }
+
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden && BASE_DATA && Date.now() - lastLiveSyncMs >= AUTO_REFRESH_MS - 5000) {
+      runLiveSync(true);
+    }
+  });
+
+  async function runLiveSync(silent = false, customToast = null) {
+    if (!BASE_DATA || !window.LiveMarketEngine) return false;
+    if (liveSyncInFlight) return false;
     liveSyncInFlight = true;
     const btn = $("refreshBtn");
     if (btn) {
@@ -107,14 +143,16 @@
     try {
       const updated = await window.LiveMarketEngine.syncLiveMarketData(BASE_DATA, PAGE_MODE);
       DATA = updated;
+      lastLiveSyncMs = Date.now();
       renderAll(DATA);
+      resetMinuteAutoRefresh();
       const ls = DATA.meta && DATA.meta.live_sync;
       if (!silent && ls && ls.ok) {
-        showToast(`实时行情已同步（${ls.synced_at.slice(11)} · ${ls.synced_items.length}项直连）`);
+        showToast(customToast || `实时行情已同步（${ls.synced_at.slice(11)} · ${ls.synced_items.length}项直连）`);
       }
       return !!(ls && ls.ok);
     } catch (err) {
-      if (!silent) showToast("实时拉取受限，已展示最新归档基线");
+      if (!silent) showToast("实时拉取受限，已展示当前最新基线");
       return false;
     } finally {
       liveSyncInFlight = false;
@@ -132,8 +170,9 @@
       BASE_DATA = window.__DASHBOARD_DATA__;
       DATA = BASE_DATA;
       renderAll(DATA);
-      // Still attempt live browser sync when online!
+      // Immediately fetch latest live quotes & start 1-minute auto-refresh!
       await runLiveSync(true);
+      resetMinuteAutoRefresh();
       return;
     }
     try {
@@ -142,14 +181,16 @@
       BASE_DATA = await resp.json();
       DATA = BASE_DATA;
       renderAll(DATA);
-      // 2. Automatically sync real-time quotes, K-lines, and SMC live in browser on EVERY page open!
+      // 2. Immediately sync real-time quotes, K-lines, SMC, and live briefing on EVERY page open!
       await runLiveSync(true);
+      resetMinuteAutoRefresh();
     } catch (err) {
       if (window.__DASHBOARD_DATA__) {
         BASE_DATA = window.__DASHBOARD_DATA__;
         DATA = BASE_DATA;
         renderAll(DATA);
         await runLiveSync(true);
+        resetMinuteAutoRefresh();
         return;
       }
       const msg =
@@ -159,31 +200,11 @@
     }
   }
 
-  // Auto 60s polling toggle
-  if ($("autoPollBtn")) {
-    $("autoPollBtn").addEventListener("click", () => {
-      const btn = $("autoPollBtn");
-      if (autoPollTimer) {
-        clearInterval(autoPollTimer);
-        autoPollTimer = null;
-        btn.classList.remove("active");
-        btn.textContent = "⏱ 60s: 关";
-        showToast("已关闭每 60 秒自动实时刷新");
-      } else {
-        autoPollTimer = setInterval(() => runLiveSync(true), 60000);
-        btn.classList.add("active");
-        btn.textContent = "⏱ 60s: 开";
-        showToast("已开启每 60 秒自动实时刷新");
-        runLiveSync(false);
-      }
-    });
-  }
-
   // Share link button
   if ($("shareBtn")) {
     $("shareBtn").addEventListener("click", async () => {
       if (isFileMode) {
-        showToast("当前为独立单文件网页，可直接转发给他人双击打开（联网自动实时更新）");
+        showToast("当前为独立单文件网页，可直接转发给他人双击打开（联网即自动实时更新）");
         return;
       }
       const shareUrl = location.href.split("#")[0];
@@ -210,13 +231,46 @@
   }
 
   // Manual live refresh button: pulls live market feeds directly in browser in <1.5s!
-  $("refreshBtn").addEventListener("click", async () => {
+  if ($("refreshBtn")) {
+    $("refreshBtn").addEventListener("click", async () => {
+      if (BASE_DATA && window.LiveMarketEngine) {
+        await runLiveSync(false);
+        return;
+      }
+      await loadDashboard();
+    });
+  }
+
+  // Top nav "实时简报" link: open briefing & generate fresh from latest live quotes!
+  if ($("navBriefingLink")) {
+    $("navBriefingLink").addEventListener("click", () => {
+      openAndRefreshBriefing();
+    });
+  }
+
+  async function openAndRefreshBriefing() {
+    UI_STATE.briefingOpen = true;
+    const bodyEl = $("briefingBody");
+    const toggleBtn = $("toggleBriefingBtn");
+    if (bodyEl) bodyEl.style.display = "";
+    if (toggleBtn) toggleBtn.textContent = "收起简报";
+
     if (BASE_DATA && window.LiveMarketEngine) {
-      await runLiveSync(false);
-      return;
+      const pill = $("briefingEditionPill");
+      if (pill) pill.textContent = "正在按最新行情实时生成…";
+      const ok = await runLiveSync(false, "简报已按最新实时行情生成");
+      if (!ok && DATA) {
+        const ts = window.LiveMarketEngine.nowCstFull();
+        if (PAGE_MODE === "gold") {
+          DATA.gold_briefing = window.LiveMarketEngine.generateGoldBriefing(DATA, ts);
+          renderLiveBriefing(DATA.gold_briefing);
+        } else {
+          DATA.morning_briefing = window.LiveMarketEngine.generateLiveBriefing(DATA, ts);
+          renderLiveBriefing(DATA.morning_briefing);
+        }
+      }
     }
-    await loadDashboard();
-  });
+  }
 
   function renderAll(D) {
     // Clear previous chart registry
@@ -226,42 +280,48 @@
     }
 
     if (PAGE_MODE === "market") {
-      $("pageTitle").textContent = D.meta.title || "A股与大类资产每日投研监控看板";
+      $("pageTitle").textContent = "A股与大类资产实时投研监控看板";
+    } else if (PAGE_MODE === "gold") {
+      $("pageTitle").textContent = "黄金与美元/美债宏观实时投研看板";
     } else {
-      $("pageTitle").textContent = "燕东微（688172.SH）每日技术分析看板";
+      $("pageTitle").textContent = "燕东微（688172.SH）实时技术分析看板";
     }
+
     const statusVals = Object.values(D.meta.status || {});
     const allOk = statusVals.every((s) => s.ok);
     const ls = D.meta.live_sync;
     if (ls && ls.ok) {
       $("metaLine").innerHTML =
         `<span class="status-dot live"></span>` +
-        `实时直连：<b class="num">${ls.synced_at}</b>　|　最新行情：<b class="num">${D.meta.latest_market_date}</b>　|　每日 09:00 / 11:30 / 15:00 / 22:30 自动更新`;
+        `实时直连：<b class="num">${ls.synced_at}</b>　|　最新行情：<b class="num">${D.meta.latest_market_date}</b>　|　每分钟自动更新`;
     } else {
       $("metaLine").innerHTML =
         `<span class="status-dot ${allOk ? "" : "warn"}"></span>` +
-        `基线：<b class="num">${D.meta.updated_at}</b>　|　最新行情：<b class="num">${D.meta.latest_market_date}</b>　|　每日 09:00 / 11:30 / 15:00 / 22:30 自动更新`;
+        `正在直连最新实时行情…（最新交易日 <b class="num">${D.meta.latest_market_date}</b>）　|　每分钟自动更新`;
     }
 
     if (!allOk) {
       const warns = statusVals.filter((s) => !s.ok).map((s) => s.note).join("；");
-      showBanner("部分数据源存在降级或沿用缓存：" + warns, false);
+      showBanner("部分基线数据源曾使用缓存，正在尝试浏览器实时直连：" + warns, false);
+    } else {
+      hideBanner();
     }
 
     if (PAGE_MODE === "yandongwei") {
       renderYandongwei(D.technical.yandongwei);
+    } else if (PAGE_MODE === "gold") {
+      renderGoldPage(D);
     } else {
       renderKpiStrip(D);
-      renderMorningBriefing(D.morning_briefing);
+      renderLiveBriefing(D.morning_briefing);
       renderConvergence(D.convergence);
       renderNationalTeam(D.national_team);
       renderSingleTechSection("star50", D.technical.star50);
       renderSingleTechSection("cyb", D.technical.cyb);
-      renderGold(D.technical);
     }
   }
 
-  /* ==================== Top Overview KPI Strip (5 Market Modules) ==================== */
+  /* ==================== Top Overview KPI Strip (4 Market Modules) ==================== */
   function renderKpiStrip(D) {
     const cs = D.convergence.summary;
     const gs = D.national_team.summary;
@@ -291,7 +351,6 @@
       },
       { ...makeTechKpi("#sec-star50", "3. 科创50", t.star50), accent: "#6d4aff" },
       { ...makeTechKpi("#sec-cyb", "4. 创业板指", t.cyb), accent: "#0d9488" },
-      { ...makeTechKpi("#sec-gold", "5. 伦敦金现 XAU", t.gold_xau), accent: "#d97706" },
     ];
 
     $("kpiStrip").innerHTML = cards
@@ -309,8 +368,8 @@
       .join("");
   }
 
-  /* ==================== 09:00 Morning Briefing (Wave + Channel) ==================== */
-  function renderMorningBriefing(B) {
+  /* ==================== Live Briefing (Wave + Channel, Generated On Every Open) ==================== */
+  function renderLiveBriefing(B) {
     const sec = $("sec-briefing");
     if (!sec) return;
     if (!B || !B.items || !B.items.length) {
@@ -318,7 +377,8 @@
       return;
     }
     sec.style.display = "";
-    $("briefingEditionPill").textContent = `${B.edition_date} · 每日 09:00 自动生成`;
+    const genShort = String(B.generated_at || "").replace(" (北京时间)", "");
+    $("briefingEditionPill").textContent = `实时动态生成 · ${genShort}`;
     $("briefingHeadline").textContent = B.headline || "";
 
     const biasBadge = (bias) => {
@@ -327,16 +387,17 @@
       return '<span class="badge neutral">震荡观察</span>';
     };
 
+    const isGold = PAGE_MODE === "gold";
     $("briefingGrid").innerHTML = B.items
       .map((it, idx) => {
-        const isWide = idx < 2; // Top row: 2 macro cards; bottom row: 3 technical wave/channel cards
+        const isMacro = isGold ? idx > 0 : idx < 2;
         const lv = it.key_levels || {};
         const chgHtml =
           it.change_pct != null
             ? `<span class="num ${cls(it.change_pct)}" style="font-size:12px;font-weight:700;">${fmt(it.change_pct, 2, true)}%</span>`
             : "";
         return `
-        <div class="b-card ${isWide ? "wide" : ""}">
+        <div class="b-card">
           <div class="b-card-head">
             <a class="b-card-title" href="${it.href}">
               <span class="b-num-dot">${it.index}</span>
@@ -349,13 +410,13 @@
             </div>
           </div>
           <div class="b-tags">
-            <span class="b-tag"><b>${isWide ? "周期" : "波浪"}</b>${it.wave_stage}</span>
-            <span class="b-tag"><b>${isWide ? "状态" : "通道"}</b>${it.channel_stage}</span>
+            <span class="b-tag"><b>${isMacro ? "指标" : "波浪"}</b>${it.wave_stage}</span>
+            <span class="b-tag"><b>${isMacro ? "状态" : "通道"}</b>${it.channel_stage}</span>
           </div>
           <div class="b-levels num">
-            <div><span>${isWide ? "基准/近期" : "下轨支撑"}</span><strong>${lv.support || "—"}</strong></div>
-            <div><span>${isWide ? "核心读数" : "通道中轨"}</span><strong>${lv.mid || "—"}</strong></div>
-            <div><span>${isWide ? "对比/规模" : "上轨压力"}</span><strong>${lv.resistance || "—"}</strong></div>
+            <div><span>${isMacro ? "短周期/基准" : "下轨支撑"}</span><strong>${lv.support || "—"}</strong></div>
+            <div><span>${isMacro ? "核心读数" : "通道中轨"}</span><strong>${lv.mid || "—"}</strong></div>
+            <div><span>${isMacro ? "对比/长周期" : "上轨压力"}</span><strong>${lv.resistance || "—"}</strong></div>
           </div>
           <div class="b-view">${it.view}</div>
         </div>`;
@@ -363,12 +424,52 @@
       .join("");
 
     $("briefingFoot").innerHTML =
-      `<span>简报生成时间：<b class="num">${B.generated_at}</b>（每日 09:00 自动刷新晨报；盘中图表仍实时直连更新）</span>` +
+      `<span>实时生成时间：<b class="num">${B.generated_at}</b>（每次点开简报及每分钟自动刷新均按最新行情即时重算）</span>` +
       `<span>方法论：自适应 ZigZag 波浪划分 + 60日线性回归通道 + 斐波那契关键位，仅供参考不构成投资建议</span>`;
+
+    const bodyEl = $("briefingBody");
+    const toggleBtn = $("toggleBriefingBtn");
+    if (bodyEl && toggleBtn) {
+      bodyEl.style.display = UI_STATE.briefingOpen ? "" : "none";
+      toggleBtn.textContent = UI_STATE.briefingOpen ? "收起简报" : "展开简报";
+      toggleBtn.onclick = (e) => {
+        e.stopPropagation();
+        if (UI_STATE.briefingOpen) {
+          UI_STATE.briefingOpen = false;
+          bodyEl.style.display = "none";
+          toggleBtn.textContent = "展开简报";
+        } else {
+          openAndRefreshBriefing();
+        }
+      };
+    }
+
+    const bannerEl = $("briefingBanner");
+    if (bannerEl) {
+      bannerEl.onclick = (e) => {
+        if (e.target.closest("button")) return;
+        if (UI_STATE.briefingOpen) {
+          UI_STATE.briefingOpen = false;
+          if (bodyEl) bodyEl.style.display = "none";
+          if (toggleBtn) toggleBtn.textContent = "展开简报";
+        } else {
+          openAndRefreshBriefing();
+        }
+      };
+    }
+
+    const refreshBriefingBtn = $("refreshBriefingBtn");
+    if (refreshBriefingBtn) {
+      refreshBriefingBtn.onclick = (e) => {
+        e.stopPropagation();
+        openAndRefreshBriefing();
+      };
+    }
 
     const copyBtn = $("copyBriefingBtn");
     if (copyBtn) {
-      copyBtn.onclick = async () => {
+      copyBtn.onclick = async (e) => {
+        e.stopPropagation();
         const txt = B.plain_text || B.headline || "";
         try {
           if (navigator.clipboard && navigator.clipboard.writeText) {
@@ -381,20 +482,10 @@
             document.execCommand("copy");
             document.body.removeChild(ta);
           }
-          showToast("已复制今日 09:00 晨间简报文本，可直接粘贴至微信/群聊");
+          showToast("已复制最新实时投研简报文本，可直接粘贴至微信/群聊");
         } catch (_) {
           showToast("复制失败，请手动选中复制");
         }
-      };
-    }
-
-    const toggleBtn = $("toggleBriefingBtn");
-    const bodyEl = $("briefingBody");
-    if (toggleBtn && bodyEl) {
-      toggleBtn.onclick = () => {
-        const hidden = bodyEl.style.display === "none";
-        bodyEl.style.display = hidden ? "" : "none";
-        toggleBtn.textContent = hidden ? "收起" : "展开";
       };
     }
   }
@@ -446,9 +537,9 @@
     $("convFootnote").innerHTML =
       `<b>数据口径</b>：纵轴为相对 <code>${C.base_date}</code> 的累计涨幅。${C.source_note}。中证基金指数最新归档日为 ${C.bond_latest_date}。`;
 
-    let scaleMode = "linear";
-    let showCsiBond = false;
-    let showSpread = true;
+    let scaleMode = UI_STATE.conv.scaleMode;
+    let showCsiBond = UI_STATE.conv.showCsiBond;
+    let showSpread = UI_STATE.conv.showSpread;
 
     const chMain = registerChart($("chartConv"));
     const chSpread = registerChart($("chartConvSpread"));
@@ -626,20 +717,26 @@
     }
 
     $("convScaleGroup").querySelectorAll("button").forEach((btn) => {
+      btn.classList.toggle("active", btn.dataset.scale === scaleMode);
       btn.onclick = () => {
         $("convScaleGroup").querySelectorAll("button").forEach((b) => b.classList.remove("active"));
         btn.classList.add("active");
         scaleMode = btn.dataset.scale;
+        UI_STATE.conv.scaleMode = scaleMode;
         draw();
       };
     });
+    $("toggleCsiBond").classList.toggle("active", showCsiBond);
     $("toggleCsiBond").onclick = (e) => {
       showCsiBond = !showCsiBond;
+      UI_STATE.conv.showCsiBond = showCsiBond;
       e.target.classList.toggle("active", showCsiBond);
       draw();
     };
+    $("toggleSpreadChart").classList.toggle("active", showSpread);
     $("toggleSpreadChart").onclick = (e) => {
       showSpread = !showSpread;
+      UI_STATE.conv.showSpread = showSpread;
       e.target.classList.toggle("active", showSpread);
       draw();
     };
@@ -668,7 +765,7 @@
       )
       .join("");
 
-    let mode = "shares_flow";
+    let mode = UI_STATE.gjd.mode;
     const chTotal = registerChart($("chartGjdTotal"));
 
     function drawTotal() {
@@ -763,10 +860,12 @@
     }
 
     $("gjdModeGroup").querySelectorAll("button").forEach((btn) => {
+      btn.classList.toggle("active", btn.dataset.mode === mode);
       btn.onclick = () => {
         $("gjdModeGroup").querySelectorAll("button").forEach((b) => b.classList.remove("active"));
         btn.classList.add("active");
         mode = btn.dataset.mode;
+        UI_STATE.gjd.mode = mode;
         drawTotal();
       };
     });
@@ -775,6 +874,11 @@
     // Single ETF selector chart
     const sel = $("gjdEtfSel");
     sel.innerHTML = G.etfs.map((e) => `<option value="${e.code}">${e.code} ${e.full}</option>`).join("");
+    if (UI_STATE.gjd.selectedEtf && G.etfs.some((e) => e.code === UI_STATE.gjd.selectedEtf)) {
+      sel.value = UI_STATE.gjd.selectedEtf;
+    } else if (G.etfs.length) {
+      UI_STATE.gjd.selectedEtf = G.etfs[0].code;
+    }
     const chOne = registerChart($("chartGjdOne"));
     function drawOne(code) {
       const s = G.series[code] || { shares: [], flow: [] };
@@ -810,8 +914,11 @@
         true
       );
     }
-    if (G.etfs.length) drawOne(G.etfs[0].code);
-    sel.onchange = (e) => drawOne(e.target.value);
+    if (UI_STATE.gjd.selectedEtf) drawOne(UI_STATE.gjd.selectedEtf);
+    sel.onchange = (e) => {
+      UI_STATE.gjd.selectedEtf = e.target.value;
+      drawOne(e.target.value);
+    };
 
     // Futures chart (CITIC net short)
     const F = G.futures;
@@ -844,8 +951,8 @@
     }
 
     // Sortable ETF table
-    let sortK = "flow1";
-    let asc = false;
+    let sortK = UI_STATE.gjd.sortK;
+    let asc = UI_STATE.gjd.asc;
     function drawTable() {
       const rs = [...G.rows].sort((a, b) => {
         let x = a[sortK];
@@ -891,6 +998,8 @@
         if (!k) return;
         asc = k === sortK ? !asc : false;
         sortK = k;
+        UI_STATE.gjd.sortK = sortK;
+        UI_STATE.gjd.asc = asc;
         drawTable();
       };
     });
@@ -919,7 +1028,16 @@
   }
 
   /* ==================== Reusable Technical + SMC Engine ==================== */
-  function createTechToolbar(containerEl, state, onChange) {
+  function createTechToolbar(containerEl, state, onChange, hasMacroOverlays = false) {
+    const macroButtons = hasMacroOverlays
+      ? `
+        <span style="width:1px;height:16px;background:var(--line);margin:0 2px;"></span>
+        <button type="button" class="pill accent-dxy ${state.overlayDxy ? "active" : ""}" data-layer="overlayDxy">叠加 美元指数 DXY</button>
+        <button type="button" class="pill accent-us10y ${state.overlayUs10y ? "active" : ""}" data-layer="overlayUs10y">叠加 美债10Y收益率</button>
+        <button type="button" class="pill accent-us2y ${state.overlayUs2y ? "active" : ""}" data-layer="overlayUs2y">叠加 美债2Y收益率</button>
+        <button type="button" class="pill accent-inv ${state.invertMacro ? "active" : ""}" data-layer="invertMacro" title="将美元指数与美债收益率右轴翻转，直观对照与金价的负相关性">宏观反轴</button>
+      `
+      : "";
     containerEl.innerHTML = `
       <div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;">
         <div class="btn-group" data-role="range">
@@ -943,6 +1061,7 @@
         <button type="button" class="pill ${state.fvg ? "active" : ""}" data-layer="fvg">FVG</button>
         <button type="button" class="pill ${state.pd ? "active" : ""}" data-layer="pd">折溢价 P/D</button>
         <button type="button" class="pill ${state.eq ? "active" : ""}" data-layer="eq">EQH/EQL</button>
+        ${macroButtons}
       </div>
     `;
 
@@ -1013,7 +1132,47 @@
     `;
   }
 
-  function drawTechChart(chart, item, state) {
+  function alignMacroToDates(targetDates, macroItem) {
+    if (!macroItem || !Array.isArray(macroItem.dates) || !macroItem.dates.length) return targetDates.map(() => null);
+    const map = {};
+    for (let i = 0; i < macroItem.dates.length; i++) {
+      map[macroItem.dates[i]] = macroItem.closes[i];
+    }
+    const mDates = macroItem.dates;
+    let ptr = 0;
+    let lastVal = null;
+    return targetDates.map((dt) => {
+      while (ptr < mDates.length && mDates[ptr] <= dt) {
+        lastVal = macroItem.closes[ptr];
+        ptr++;
+      }
+      return map[dt] != null ? map[dt] : lastVal;
+    });
+  }
+
+  function calcPearsonCorr(a, b, win = 60) {
+    const pairs = [];
+    for (let i = Math.max(0, a.length - win); i < a.length; i++) {
+      if (a[i] != null && b[i] != null && Number.isFinite(a[i]) && Number.isFinite(b[i])) {
+        pairs.push([a[i], b[i]]);
+      }
+    }
+    if (pairs.length < 15) return null;
+    const n = pairs.length;
+    const ma = pairs.reduce((s, p) => s + p[0], 0) / n;
+    const mb = pairs.reduce((s, p) => s + p[1], 0) / n;
+    let num = 0, da = 0, db = 0;
+    for (const [x, y] of pairs) {
+      const dx = x - ma;
+      const dy = y - mb;
+      num += dx * dy;
+      da += dx * dx;
+      db += dy * dy;
+    }
+    return da > 0 && db > 0 ? num / Math.sqrt(da * db) : null;
+  }
+
+  function drawTechChart(chart, item, state, macroSeries = null) {
     const m = item.meta;
     const dates = item.dates;
     const ohlc = item.ohlc;
@@ -1378,6 +1537,93 @@
       });
     }
 
+    // Optional Gold Macro Overlays on main price panel (yAxisIndex 3 = DXY, yAxisIndex 4 = US10Y/US2Y Yield %)
+    const alignedDxy = macroSeries && state.overlayDxy && macroSeries.dxy ? alignMacroToDates(dates, macroSeries.dxy) : null;
+    const alignedUs10y = macroSeries && state.overlayUs10y && macroSeries.us10y ? alignMacroToDates(dates, macroSeries.us10y) : null;
+    const alignedUs2y = macroSeries && state.overlayUs2y && macroSeries.us2y ? alignMacroToDates(dates, macroSeries.us2y) : null;
+    const hasDxy = Boolean(alignedDxy && alignedDxy.some((v) => v != null));
+    const hasYield = Boolean(
+      (alignedUs10y && alignedUs10y.some((v) => v != null)) ||
+      (alignedUs2y && alignedUs2y.some((v) => v != null))
+    );
+
+    if (hasDxy) {
+      series.push({
+        name: "美元指数 DXY",
+        type: "line",
+        xAxisIndex: 0,
+        yAxisIndex: 3,
+        data: alignedDxy,
+        symbol: "none",
+        connectNulls: true,
+        lineStyle: { width: 1.7, color: "#2563eb" },
+        itemStyle: { color: "#2563eb" },
+        z: 6,
+      });
+    }
+    if (alignedUs10y && alignedUs10y.some((v) => v != null)) {
+      series.push({
+        name: "美债10Y收益率(%)",
+        type: "line",
+        xAxisIndex: 0,
+        yAxisIndex: 4,
+        data: alignedUs10y,
+        symbol: "none",
+        connectNulls: true,
+        lineStyle: { width: 1.65, color: "#dc2626" },
+        itemStyle: { color: "#dc2626" },
+        z: 6,
+      });
+    }
+    if (alignedUs2y && alignedUs2y.some((v) => v != null)) {
+      series.push({
+        name: "美债2Y收益率(%)",
+        type: "line",
+        xAxisIndex: 0,
+        yAxisIndex: 4,
+        data: alignedUs2y,
+        symbol: "none",
+        connectNulls: true,
+        lineStyle: { width: 1.5, color: "#0d9488", type: "dashed" },
+        itemStyle: { color: "#0d9488" },
+        z: 6,
+      });
+    }
+
+    const extraYAxes = [];
+    if (hasDxy || hasYield) {
+      extraYAxes.push({
+        type: "value",
+        gridIndex: 0,
+        position: "right",
+        offset: 0,
+        scale: true,
+        inverse: Boolean(state.invertMacro),
+        show: hasDxy,
+        name: hasDxy ? (state.invertMacro ? "DXY(反)" : "DXY") : "",
+        nameTextStyle: { fontSize: 10, color: "#2563eb", padding: [0, 0, 0, 12] },
+        splitLine: { show: false },
+        axisLine: { show: hasDxy, lineStyle: { color: "#93c5fd" } },
+        axisLabel: { fontSize: 10, color: "#2563eb", formatter: (v) => fmt(v, 1) },
+      });
+      extraYAxes.push({
+        type: "value",
+        gridIndex: 0,
+        position: "right",
+        offset: hasDxy ? 54 : 0,
+        scale: true,
+        inverse: Boolean(state.invertMacro),
+        show: hasYield,
+        name: hasYield ? (state.invertMacro ? "美债%(反)" : "美债%") : "",
+        nameTextStyle: { fontSize: 10, color: "#dc2626", padding: [0, 0, 0, 18] },
+        splitLine: { show: false },
+        axisLine: { show: hasYield, lineStyle: { color: "#fca5a5" } },
+        axisLabel: { fontSize: 10, color: "#dc2626", formatter: (v) => fmt(v, 2) + "%" },
+      });
+    }
+
+    const gridRight = hasDxy && hasYield ? 124 : hasDxy || hasYield ? 84 : 112;
+
     chart.setOption(
       {
         animation: false,
@@ -1395,6 +1641,17 @@
             html += `<div>开 <b>${fmt(k[0], d)}</b>　高 <b>${fmt(k[3], d)}</b>　低 <b>${fmt(k[2], d)}</b>　收 <b style="color:${chg >= 0 ? COLORS.red : COLORS.green}">${fmt(k[1], d)} (${fmt(chg, 2, true)}%)</b></div>`;
             if (hasVol && item.volumes[idx] != null) {
               html += `<div>成交量：<b>${fmt(item.volumes[idx] / volDiv, 2)} ${volLabel}</b></div>`;
+            }
+            if (hasDxy || hasYield) {
+              const parts = [];
+              if (alignedDxy && alignedDxy[idx] != null) parts.push(`<span style="color:#2563eb">DXY <b>${fmt(alignedDxy[idx], 2)}</b></span>`);
+              if (alignedUs10y && alignedUs10y[idx] != null) parts.push(`<span style="color:#dc2626">美债10Y <b>${fmt(alignedUs10y[idx], 3)}%</b></span>`);
+              if (alignedUs2y && alignedUs2y[idx] != null) parts.push(`<span style="color:#0d9488">美债2Y <b>${fmt(alignedUs2y[idx], 3)}%</b></span>`);
+              if (alignedUs10y && alignedUs2y && alignedUs10y[idx] != null && alignedUs2y[idx] != null) {
+                const spBp = (alignedUs10y[idx] - alignedUs2y[idx]) * 100;
+                parts.push(`<span>10Y−2Y <b>${fmt(spBp, 1, true)}bp</b></span>`);
+              }
+              if (parts.length) html += `<div style="margin-top:3px;padding-top:3px;border-top:1px solid #eef2f6;font-size:11.5px;">${parts.join("　")}</div>`;
             }
             if (state.ma) {
               html += `<div style="font-size:11.5px;color:#555">MA5:${fmt(ind.ma5[idx], d)} / MA20:${fmt(ind.ma20[idx], d)} / MA60:${fmt(ind.ma60[idx], d)}</div>`;
@@ -1416,15 +1673,18 @@
           textStyle: { fontSize: 11 },
           data: [
             "日K",
+            ...(hasDxy ? ["美元指数 DXY"] : []),
+            ...(alignedUs10y && alignedUs10y.some((v) => v != null) ? ["美债10Y收益率(%)"] : []),
+            ...(alignedUs2y && alignedUs2y.some((v) => v != null) ? ["美债2Y收益率(%)"] : []),
             ...(state.ma ? ["MA5", "MA20", "MA60", "MA120"] : []),
             ...(state.boll ? ["BOLL上", "BOLL中", "BOLL下"] : []),
             ...(state.sub === "macd" ? ["DIF", "DEA"] : ["RSI(14)"]),
           ],
         },
         grid: [
-          { left: 68, right: 112, top: 30, height: "48%" },
-          { left: 68, right: 112, top: "60%", height: "12%" },
-          { left: 68, right: 112, top: "77%", height: "14%" },
+          { left: 68, right: gridRight, top: 34, height: "47%" },
+          { left: 68, right: gridRight, top: "60%", height: "12%" },
+          { left: 68, right: gridRight, top: "77%", height: "14%" },
         ],
         xAxis: [
           { type: "category", gridIndex: 0, data: dates, boundaryGap: true, axisLabel: { show: false }, axisTick: { show: false }, axisLine: { lineStyle: { color: "#cbd5e1" } } },
@@ -1465,6 +1725,7 @@
             splitLine: { lineStyle: { color: COLORS.grid } },
             axisLabel: { fontSize: 10, color: COLORS.sub },
           },
+          ...extraYAxes,
         ],
         dataZoom: [
           { type: "inside", xAxisIndex: [0, 1, 2], start: startPct, end: 100 },
@@ -1476,21 +1737,22 @@
     );
   }
 
-  /* ==================== Modules 3 & 4: Dedicated STAR 50 / ChiNext 50 ==================== */
+  /* ==================== Modules 3 & 4: Dedicated STAR 50 / ChiNext ==================== */
   function renderSingleTechSection(key, item) {
     const m = item.meta;
     const s = item.summary;
     const badgeEl = $(key + "DateBadge");
     if (badgeEl) badgeEl.textContent = `最新交易日：${s.latest_date}（共 ${m.bar_count} 根日K）`;
 
-    const state = { bars: 130, sub: "macd", ma: true, boll: false, wave: true, channel: true, structure: true, ob: true, fvg: false, pd: true, eq: false };
+    const state = UI_STATE.tech[key] || { bars: 130, sub: "macd", ma: true, boll: false, wave: true, channel: true, structure: true, ob: true, fvg: false, pd: true, eq: false };
+    UI_STATE.tech[key] = state;
     const ch = registerChart($("chart-" + key));
 
     renderTechHeader($("head-" + key), item);
     renderSmcRibbon($("ribbon-" + key), item);
 
     const redraw = () => drawTechChart(ch, item, state);
-    createTechToolbar($(key + "Toolbar"), state, redraw);
+    createTechToolbar($(key + "Toolbar"), state, redraw, false);
     redraw();
 
     const footEl = $(key + "Footnote");
@@ -1500,73 +1762,10 @@
     }
   }
 
-  /* ==================== Module 5: Gold (伦敦金现 / 黄金股ETF / 黄金ETF) ==================== */
-  function renderGold(T) {
-    let activeKey = "gold_xau";
-    const state = { bars: 130, sub: "macd", ma: true, boll: false, wave: true, channel: true, structure: true, ob: true, fvg: false, pd: true, eq: false };
-    const chGold = registerChart($("chart-gold"));
-
-    function redraw() {
-      const item = T[activeKey];
-      if (!item) return;
-      renderTechHeader($("head-gold"), item);
-      renderSmcRibbon($("ribbon-gold"), item);
-      drawTechChart(chGold, item, state);
-      const extraNote =
-        activeKey === "gold_xau"
-          ? "伦敦金现（XAU/USD）日K来自新浪外盘现货接口并实时叠加盘中最新报价，单位美元/盎司；国际现货无统一场内成交量列。"
-          : activeKey === "gold_stock_etf"
-          ? "黄金股ETF（永赢中证沪深港黄金产业股票ETF，517520.SH）来自腾讯财经前复权日K与实时行情，反映A/H黄金开采与冶炼产业链龙头弹性。"
-          : "黄金ETF（华安黄金ETF，518880.SH）来自腾讯财经前复权日K与实时行情，紧密跟踪国内现货黄金价格。";
-      $("goldFootnote").innerHTML = `<b>黄金数据口径</b>：${extraNote} 当前标的区间：${item.meta.date_range[0]} 至 ${item.meta.date_range[1]}（共 ${item.meta.bar_count} 根日K）。`;
-    }
-
-    createTechToolbar($("goldToolbar"), state, redraw);
-    $("goldSymbolGroup").querySelectorAll("button").forEach((btn) => {
-      btn.onclick = () => {
-        $("goldSymbolGroup").querySelectorAll("button").forEach((b) => b.classList.remove("active"));
-        btn.classList.add("active");
-        activeKey = btn.dataset.key;
-        redraw();
-      };
-    });
-    redraw();
-  }
-
-  /* ==================== Module 5: Yandongwei (688172) ==================== */
-  function renderYandongwei(item) {
-    const s = item.summary;
-    const q = item.quote || {};
+  /* ==================== Reusable SMC Detail Tables (Gold & Yandongwei) ==================== */
+  function renderSmcDetailTables(item, zonesTableId, eventsTableId) {
     const m = item.meta;
-
-    $("ydwDateBadge").textContent = `最新交易日：${s.latest_date}（前复权日K · 科创板）`;
-
-    $("ydwQuoteStats").innerHTML = [
-      ["最新收盘价", fmt(s.close, 2) + " 元", `日涨跌 ${fmt(s.change_pct, 2, true)}% · 振幅 ${fmt(q.amplitude_pct, 2)}%`, cls(s.change_pct)],
-      ["总市值 / 流通市值", `${fmt(q.mcap_yi, 1)} / ${fmt(q.float_mcap_yi, 1)} 亿`, "腾讯校准口径 f[45] / f[44]", ""],
-      ["市净率 PB / PE(TTM)", `${fmt(q.pb, 2)}x / ${fmt(q.pe_ttm, 1)}x`, "PB=f[46]（非f[43]振幅）", ""],
-      ["换手率 / 成交额", `${fmt(q.turnover_pct, 2)}% / ${fmt((q.amount_wan || 0) / 10000, 2)} 亿`, "成交量单位：股（万股）", ""],
-      ["阶段涨跌幅", `5日 ${fmt(s.ret_5d, 1, true)}%`, `20日 ${fmt(s.ret_20d, 1, true)}% · 60日 ${fmt(s.ret_60d, 1, true)}%`, cls(s.ret_5d)],
-    ]
-      .map(
-        (x) =>
-          `<div class="stat-box"><div class="sk">${x[0]}</div><div class="sv num ${x[3]}">${x[1]}</div><div class="sd num">${x[2]}</div></div>`
-      )
-      .join("");
-
-    renderSmcRibbon($("ribbon-ydw"), item);
-
-    const state = { bars: 130, sub: "macd", ma: true, boll: false, wave: true, channel: true, structure: true, ob: true, fvg: false, pd: true, eq: false };
-    const chYdw = registerChart($("chart-ydw"));
-    const redraw = () => drawTechChart(chYdw, item, state);
-    createTechToolbar($("ydwToolbar"), state, redraw);
-    redraw();
-
-    $("ydwFootnote").innerHTML =
-      `<b>燕东微（688172.SH）口径说明</b>：日K来自腾讯财经前复权（${m.date_range[0]} 至 ${m.date_range[1]}，共 ${m.bar_count} 根）。严格遵循 <code>a-stock-data V3.10.1</code> 校验规则：<b>科创板（688/689）腾讯K线成交量原始单位为「股」</b>（图表自动换算为「万股」），避免按主板「手」误算放大100倍；市值严格区分总市值 <code>f[45]</code> 与流通市值 <code>f[44]</code>。`;
-
-    // Render standalone Yandongwei SMC detail tables if present
-    const zTbl = $("ydwZonesTable");
+    const zTbl = $(zonesTableId);
     if (zTbl) {
       const obs = (item.smc.active_order_blocks || []).map((ob) => ({
         type: "订单块 OB",
@@ -1603,7 +1802,7 @@
         : '<tr><td colspan="6" class="l" style="color:var(--sub)">当前无活跃未失效的 OB 或 FVG 区间</td></tr>';
     }
 
-    const eTbl = $("ydwEventsTable");
+    const eTbl = $(eventsTableId);
     if (eTbl) {
       const evts = [
         ...(item.smc.swing_events || []).map((e) => ({ ...e, layerCn: "波段 (L=10)" })),
@@ -1628,39 +1827,437 @@
     }
   }
 
+  /* ==================== Standalone Page: Gold + DXY + US10Y/US2Y Yield ==================== */
+  function renderGoldPage(D) {
+    const T = D.technical || {};
+    const GM = D.gold_macro || { series: {}, spread_10y_2y: null };
+    const MS = GM.series || {};
+    const xau = T.gold_xau;
+    const dxy = MS.dxy;
+    const us10y = MS.us10y;
+    const us2y = MS.us2y;
+    const sp = GM.spread_10y_2y;
+
+    // 1. Top 4 Macro KPI Strip
+    const kpiCards = [];
+    if (xau) {
+      kpiCards.push({ ...makeTechKpi("#sec-gold-main", "1. 伦敦金现 XAU/USD", xau), accent: "#d97706" });
+    }
+    if (dxy && dxy.summary) {
+      const sd = dxy.summary;
+      kpiCards.push({
+        href: "#sec-gold-macro",
+        accent: "#2563eb",
+        title: "2. 美元指数 DXY",
+        tag: sd.latest_date.slice(5),
+        val: fmt(sd.close, 2),
+        valCls: cls(sd.change_pct),
+        subL: `日变动 ${fmt(sd.change_pct, 2, true)}%`,
+        subR: `20日 ${fmt(sd.ret_20d, 1, true)}%`,
+        subCls: cls(sd.change_pct),
+      });
+    }
+    if (us10y && us10y.summary) {
+      const s10 = us10y.summary;
+      kpiCards.push({
+        href: "#sec-gold-macro",
+        accent: "#dc2626",
+        title: "3. 美国10年期国债收益率",
+        tag: s10.latest_date.slice(5),
+        val: fmt(s10.close, 3) + "%",
+        valCls: cls(s10.change_bp),
+        subL: `日变动 ${fmt(s10.change_bp, 1, true)}bp`,
+        subR: `20日 ${fmt(s10.chg_20d_bp, 0, true)}bp`,
+        subCls: cls(s10.change_bp),
+      });
+    }
+    if (us2y && us2y.summary) {
+      const s2 = us2y.summary;
+      kpiCards.push({
+        href: "#sec-gold-macro",
+        accent: "#0d9488",
+        title: "4. 美国2年期国债收益率",
+        tag: sp ? `10Y-2Y ${fmt(sp.latest_bp, 0, true)}bp` : s2.latest_date.slice(5),
+        val: fmt(s2.close, 3) + "%",
+        valCls: cls(s2.change_bp),
+        subL: `日变动 ${fmt(s2.change_bp, 1, true)}bp`,
+        subR: `20日 ${fmt(s2.chg_20d_bp, 0, true)}bp`,
+        subCls: cls(s2.change_bp),
+      });
+    }
+    if ($("goldKpiStrip")) {
+      $("goldKpiStrip").innerHTML = kpiCards
+        .map(
+          (c) => `
+        <a class="kpi-card" href="${c.href}" style="--accent:${c.accent}">
+          <div class="k-head"><span>${c.title}</span><span class="num">${c.tag}</span></div>
+          <div class="k-val num ${c.valCls}">${c.val}</div>
+          <div class="k-sub">
+            <span class="num ${c.subCls || ""}">${c.subL}</span>
+            <span>${c.subR}</span>
+          </div>
+        </a>`
+        )
+        .join("");
+    }
+
+    // 2. Live Gold × Macro Briefing
+    renderLiveBriefing(D.gold_briefing);
+
+    // 3. Main Gold Candlestick + SMC + Direct DXY / US10Y / US2Y Overlays
+    const state = UI_STATE.tech.gold;
+    const chGold = registerChart($("chart-gold"));
+
+    function redrawGoldMain() {
+      const item = T[UI_STATE.goldActiveKey] || T.gold_xau;
+      if (!item) return;
+      renderTechHeader($("head-gold"), item);
+      renderSmcRibbon($("ribbon-gold"), item);
+      drawTechChart(chGold, item, state, MS);
+      renderSmcDetailTables(item, "goldZonesTable", "goldEventsTable");
+
+      const extraNote =
+        UI_STATE.goldActiveKey === "gold_xau"
+          ? "伦敦金现（XAU/USD）日K来自新浪外盘现货接口并实时叠加东方财富盘中报价，单位美元/盎司；国际现货无统一场内成交量列。"
+          : UI_STATE.goldActiveKey === "gold_stock_etf"
+          ? "黄金股ETF（永赢中证沪深港黄金产业股票ETF，517520.SH）来自腾讯财经前复权日K与实时行情，反映A/H黄金产业链龙头弹性。"
+          : "黄金ETF（华安黄金ETF，518880.SH）来自腾讯财经前复权日K与实时行情，紧密跟踪国内现货黄金价格。";
+      $("goldFootnote").innerHTML =
+        `<b>黄金 + 宏观叠加口径</b>：${extraNote} 右侧双坐标轴实时叠加<b>美元指数（DXY）</b>与<b>美国10年期/2年期国债收益率（%）</b>（点击上方胶囊可单独开关或开启反轴对照）。当前区间：${item.meta.date_range[0]} 至 ${item.meta.date_range[1]}（共 ${item.meta.bar_count} 根日K）。`;
+    }
+
+    createTechToolbar($("goldToolbar"), state, redrawGoldMain, true);
+    $("goldSymbolGroup").querySelectorAll("button").forEach((btn) => {
+      btn.classList.toggle("active", btn.dataset.key === UI_STATE.goldActiveKey);
+      btn.onclick = () => {
+        $("goldSymbolGroup").querySelectorAll("button").forEach((b) => b.classList.remove("active"));
+        btn.classList.add("active");
+        UI_STATE.goldActiveKey = btn.dataset.key;
+        redrawGoldMain();
+        drawMacroComparison();
+      };
+    });
+    redrawGoldMain();
+
+    // 4. Dedicated Gold × DXY × US10Y / US2Y Yield Macro Linkage Panel
+    const chMacro = registerChart($("chartGoldMacro"));
+    const chSpread = registerChart($("chartYieldSpread"));
+
+    if ($("goldMacroDateBadge")) {
+      $("goldMacroDateBadge").textContent = `宏观数据截至：${GM.latest_date || "—"}（实时直连）`;
+    }
+
+    function drawMacroComparison() {
+      const goldItem = T[UI_STATE.goldActiveKey] || T.gold_xau;
+      if (!goldItem) return;
+      const mState = UI_STATE.goldMacro;
+      const allDates = goldItem.dates;
+      const allGoldClose = goldItem.ohlc.map((k) => k[1]);
+      const allDxy = alignMacroToDates(allDates, dxy);
+      const allUs10y = alignMacroToDates(allDates, us10y);
+      const allUs2y = alignMacroToDates(allDates, us2y);
+      const allSpBp = allDates.map((_, i) =>
+        allUs10y[i] != null && allUs2y[i] != null ? Number(((allUs10y[i] - allUs2y[i]) * 100).toFixed(1)) : null
+      );
+
+      const corrDxy = calcPearsonCorr(allGoldClose, allDxy, 60);
+      const corr10y = calcPearsonCorr(allGoldClose, allUs10y, 60);
+
+      // Update Macro Stat Boxes
+      const boxes = [];
+      if (dxy && dxy.summary) {
+        const sd = dxy.summary;
+        boxes.push([
+          "美元指数 (DXY)",
+          fmt(sd.close, 2),
+          `日 ${fmt(sd.change_pct, 2, true)}% · 20日 ${fmt(sd.ret_20d, 2, true)}% · 60日 ${fmt(sd.ret_60d, 2, true)}%`,
+          cls(sd.change_pct),
+        ]);
+      }
+      if (us10y && us10y.summary) {
+        const s10 = us10y.summary;
+        boxes.push([
+          "美国10年期国债收益率",
+          fmt(s10.close, 3) + "%",
+          `日 ${fmt(s10.change_bp, 1, true)}bp · 20日 ${fmt(s10.chg_20d_bp, 1, true)}bp · 60日 ${fmt(s10.chg_60d_bp, 1, true)}bp`,
+          cls(s10.change_bp),
+        ]);
+      }
+      if (us2y && us2y.summary) {
+        const s2 = us2y.summary;
+        boxes.push([
+          "美国2年期国债收益率",
+          fmt(s2.close, 3) + "%",
+          `日 ${fmt(s2.change_bp, 1, true)}bp · 20日 ${fmt(s2.chg_20d_bp, 1, true)}bp · 60日 ${fmt(s2.chg_60d_bp, 1, true)}bp`,
+          cls(s2.change_bp),
+        ]);
+      }
+      if (sp) {
+        boxes.push([
+          "10Y − 2Y 期限利差",
+          fmt(sp.latest_bp, 1, true) + " bp",
+          `${sp.is_inverted ? "曲线倒挂" : "正斜率"} · 60日相关: 金/美元 ${corrDxy != null ? fmt(corrDxy, 2) : "—"} | 金/10Y ${corr10y != null ? fmt(corr10y, 2) : "—"}`,
+          cls(sp.latest_bp),
+        ]);
+      }
+      $("goldMacroStats").innerHTML = boxes
+        .map(
+          (x) =>
+            `<div class="stat-box"><div class="sk">${x[0]}</div><div class="sv num ${x[3]}">${x[1]}</div><div class="sd num">${x[2]}</div></div>`
+        )
+        .join("");
+
+      const sliceStart = mState.bars > 0 && allDates.length > mState.bars ? allDates.length - mState.bars : 0;
+      const dates = allDates.slice(sliceStart);
+      const sGold = allGoldClose.slice(sliceStart);
+      const sDxy = allDxy.slice(sliceStart);
+      const s10 = allUs10y.slice(sliceStart);
+      const s2 = allUs2y.slice(sliceStart);
+      const sSp = allSpBp.slice(sliceStart);
+
+      const normalizePct = (arr) => {
+        const base = arr.find((v) => v != null && v > 0);
+        if (!base) return arr.map(() => null);
+        return arr.map((v) => (v != null ? Number((((v / base) - 1) * 100).toFixed(2)) : null));
+      };
+
+      const goldName = goldItem.meta.title;
+      const isNorm = mState.mode === "norm";
+      const inv = mState.invert;
+
+      if (isNorm) {
+        const nGold = normalizePct(sGold);
+        const nDxy = normalizePct(sDxy);
+        const n10 = normalizePct(s10);
+        const n2 = normalizePct(s2);
+        chMacro.setOption(
+          {
+            animation: false,
+            tooltip: {
+              trigger: "axis",
+              axisPointer: { type: "cross" },
+              formatter: (params) => {
+                if (!params || !params.length) return "";
+                const i = params[0].dataIndex;
+                let html = `<div style="font-weight:700;margin-bottom:4px">${dates[i]}（区间相对涨跌幅）</div>`;
+                html += `<div><span style="color:#d97706">●</span> ${goldName}：<b>${fmt(nGold[i], 2, true)}%</b>（${fmt(sGold[i], goldItem.meta.decimals)}）</div>`;
+                if (sDxy[i] != null) html += `<div><span style="color:#2563eb">●</span> 美元指数 DXY：<b>${fmt(nDxy[i], 2, true)}%</b>（${fmt(sDxy[i], 2)}）</div>`;
+                if (s10[i] != null) html += `<div><span style="color:#dc2626">●</span> 美国10Y收益率：<b>${fmt(n10[i], 2, true)}%</b>（${fmt(s10[i], 3)}%）</div>`;
+                if (s2[i] != null) html += `<div><span style="color:#0d9488">●</span> 美国2Y收益率：<b>${fmt(n2[i], 2, true)}%</b>（${fmt(s2[i], 3)}%）</div>`;
+                if (sSp[i] != null) html += `<div style="margin-top:3px;border-top:1px solid #eee;padding-top:3px">10Y − 2Y 期限利差：<b>${fmt(sSp[i], 1, true)} bp</b></div>`;
+                return html;
+              },
+            },
+            legend: { top: 0, data: [goldName, "美元指数 DXY", "美国10Y收益率", "美国2Y收益率"] },
+            grid: { left: 16, right: 24, top: 34, bottom: 48, containLabel: true },
+            xAxis: { type: "category", data: dates, boundaryGap: false, axisLabel: { fontSize: 11, color: COLORS.sub } },
+            yAxis: {
+              type: "value",
+              name: "区间涨跌幅(%)",
+              splitLine: { lineStyle: { color: COLORS.grid } },
+              axisLabel: { fontSize: 11, color: COLORS.sub, formatter: (v) => fmt(v, 0, true) + "%" },
+            },
+            dataZoom: [{ type: "inside" }, { type: "slider", height: 18, bottom: 8 }],
+            series: [
+              { name: goldName, type: "line", data: nGold, symbol: "none", lineStyle: { width: 2.3, color: "#d97706" }, itemStyle: { color: "#d97706" } },
+              { name: "美元指数 DXY", type: "line", data: nDxy, symbol: "none", connectNulls: true, lineStyle: { width: 1.8, color: "#2563eb" }, itemStyle: { color: "#2563eb" } },
+              { name: "美国10Y收益率", type: "line", data: n10, symbol: "none", connectNulls: true, lineStyle: { width: 1.8, color: "#dc2626" }, itemStyle: { color: "#dc2626" } },
+              { name: "美国2Y收益率", type: "line", data: n2, symbol: "none", connectNulls: true, lineStyle: { width: 1.6, color: "#0d9488", type: "dashed" }, itemStyle: { color: "#0d9488" } },
+            ],
+          },
+          true
+        );
+      } else {
+        chMacro.setOption(
+          {
+            animation: false,
+            tooltip: {
+              trigger: "axis",
+              axisPointer: { type: "cross" },
+              formatter: (params) => {
+                if (!params || !params.length) return "";
+                const i = params[0].dataIndex;
+                let html = `<div style="font-weight:700;margin-bottom:4px">${dates[i]}</div>`;
+                html += `<div><span style="color:#d97706">●</span> ${goldName}：<b>${fmt(sGold[i], goldItem.meta.decimals)} ${goldItem.meta.price_unit}</b></div>`;
+                if (sDxy[i] != null) html += `<div><span style="color:#2563eb">●</span> 美元指数 DXY：<b>${fmt(sDxy[i], 2)}</b></div>`;
+                if (s10[i] != null) html += `<div><span style="color:#dc2626">●</span> 美国10年期国债收益率：<b>${fmt(s10[i], 3)}%</b></div>`;
+                if (s2[i] != null) html += `<div><span style="color:#0d9488">●</span> 美国2年期国债收益率：<b>${fmt(s2[i], 3)}%</b></div>`;
+                if (sSp[i] != null) html += `<div style="margin-top:3px;border-top:1px solid #eee;padding-top:3px">10Y − 2Y 期限利差：<b>${fmt(sSp[i], 1, true)} bp</b></div>`;
+                return html;
+              },
+            },
+            legend: { top: 0, data: [goldName, "美元指数 DXY", "美国10Y收益率(%)", "美国2Y收益率(%)"] },
+            grid: { left: 68, right: 126, top: 36, bottom: 48 },
+            xAxis: { type: "category", data: dates, boundaryGap: false, axisLabel: { fontSize: 11, color: COLORS.sub } },
+            yAxis: [
+              {
+                type: "value",
+                name: goldItem.meta.price_unit,
+                scale: true,
+                nameTextStyle: { fontSize: 10.5, color: "#b45309" },
+                splitLine: { lineStyle: { color: COLORS.grid } },
+                axisLabel: { fontSize: 10.5, color: "#b45309" },
+              },
+              {
+                type: "value",
+                position: "right",
+                offset: 0,
+                scale: true,
+                inverse: inv,
+                name: inv ? "DXY(反)" : "DXY",
+                nameTextStyle: { fontSize: 10.5, color: "#2563eb" },
+                splitLine: { show: false },
+                axisLine: { show: true, lineStyle: { color: "#93c5fd" } },
+                axisLabel: { fontSize: 10.5, color: "#2563eb", formatter: (v) => fmt(v, 1) },
+              },
+              {
+                type: "value",
+                position: "right",
+                offset: 56,
+                scale: true,
+                inverse: inv,
+                name: inv ? "美债%(反)" : "美债收益率%",
+                nameTextStyle: { fontSize: 10.5, color: "#dc2626" },
+                splitLine: { show: false },
+                axisLine: { show: true, lineStyle: { color: "#fca5a5" } },
+                axisLabel: { fontSize: 10.5, color: "#dc2626", formatter: (v) => fmt(v, 2) + "%" },
+              },
+            ],
+            dataZoom: [{ type: "inside" }, { type: "slider", height: 18, bottom: 8 }],
+            series: [
+              { name: goldName, type: "line", yAxisIndex: 0, data: sGold, symbol: "none", lineStyle: { width: 2.3, color: "#d97706" }, areaStyle: { color: "rgba(217, 119, 6, 0.08)" }, itemStyle: { color: "#d97706" } },
+              { name: "美元指数 DXY", type: "line", yAxisIndex: 1, data: sDxy, symbol: "none", connectNulls: true, lineStyle: { width: 1.85, color: "#2563eb" }, itemStyle: { color: "#2563eb" } },
+              { name: "美国10Y收益率(%)", type: "line", yAxisIndex: 2, data: s10, symbol: "none", connectNulls: true, lineStyle: { width: 1.8, color: "#dc2626" }, itemStyle: { color: "#dc2626" } },
+              { name: "美国2Y收益率(%)", type: "line", yAxisIndex: 2, data: s2, symbol: "none", connectNulls: true, lineStyle: { width: 1.6, color: "#0d9488", type: "dashed" }, itemStyle: { color: "#0d9488" } },
+            ],
+          },
+          true
+        );
+      }
+
+      // Synchronized 10Y - 2Y Yield Spread Sub-Chart
+      chSpread.setOption(
+        {
+          animation: false,
+          tooltip: {
+            trigger: "axis",
+            valueFormatter: (v) => (v == null ? "—" : fmt(v, 1, true) + " bp"),
+          },
+          grid: { left: 68, right: 126, top: 24, bottom: 24 },
+          xAxis: { type: "category", data: dates, boundaryGap: false, axisLabel: { fontSize: 10.5, color: COLORS.sub } },
+          yAxis: {
+            type: "value",
+            name: "10Y−2Y利差(bp)",
+            nameTextStyle: { fontSize: 10.5, color: COLORS.sub },
+            splitLine: { lineStyle: { color: COLORS.grid } },
+            axisLabel: { fontSize: 10.5, color: COLORS.sub },
+          },
+          series: [
+            {
+              name: "美国10Y−2Y国债利差",
+              type: "bar",
+              data: sSp.map((v) => ({
+                value: v,
+                itemStyle: { color: (v || 0) >= 0 ? "rgba(220, 38, 38, 0.58)" : "rgba(22, 156, 99, 0.58)" },
+              })),
+              markLine: {
+                silent: true,
+                symbol: "none",
+                lineStyle: { color: "#475569", type: "dashed", width: 1.1 },
+                label: { formatter: "0 bp 倒挂线", position: "insideEndTop", color: "#475569", fontSize: 10 },
+                data: [{ yAxis: 0 }],
+              },
+            },
+          ],
+        },
+        true
+      );
+
+      $("goldMacroFootnote").innerHTML =
+        `<b>宏观联动说明</b>：美元指数（DXY）反映美元计价货币强弱，美国10年期国债收益率（US10Y）代表长期无风险利率基准，美国2年期国债收益率（US2Y）对美联储政策利率预期最敏感；<b>10Y − 2Y 期限利差</b>（下方副图）衡量利率曲线斜率与衰退/降息周期预期。`;
+    }
+
+    $("goldMacroRangeGroup").querySelectorAll("button").forEach((btn) => {
+      btn.classList.toggle("active", Number(btn.dataset.bars) === UI_STATE.goldMacro.bars);
+      btn.onclick = () => {
+        $("goldMacroRangeGroup").querySelectorAll("button").forEach((b) => b.classList.remove("active"));
+        btn.classList.add("active");
+        UI_STATE.goldMacro.bars = Number(btn.dataset.bars);
+        drawMacroComparison();
+      };
+    });
+    $("goldMacroModeGroup").querySelectorAll("button").forEach((btn) => {
+      btn.classList.toggle("active", btn.dataset.mode === UI_STATE.goldMacro.mode);
+      btn.onclick = () => {
+        $("goldMacroModeGroup").querySelectorAll("button").forEach((b) => b.classList.remove("active"));
+        btn.classList.add("active");
+        UI_STATE.goldMacro.mode = btn.dataset.mode;
+        drawMacroComparison();
+      };
+    });
+    const invBtn = $("toggleMacroInvert");
+    if (invBtn) {
+      invBtn.classList.toggle("active", UI_STATE.goldMacro.invert);
+      invBtn.onclick = () => {
+        UI_STATE.goldMacro.invert = !UI_STATE.goldMacro.invert;
+        invBtn.classList.toggle("active", UI_STATE.goldMacro.invert);
+        drawMacroComparison();
+      };
+    }
+
+    drawMacroComparison();
+  }
+
+  /* ==================== Standalone Page: Yandongwei (688172) ==================== */
+  function renderYandongwei(item) {
+    const s = item.summary;
+    const q = item.quote || {};
+    const m = item.meta;
+
+    $("ydwDateBadge").textContent = `最新交易日：${s.latest_date}（前复权日K · 科创板）`;
+
+    $("ydwQuoteStats").innerHTML = [
+      ["最新收盘价", fmt(s.close, 2) + " 元", `日涨跌 ${fmt(s.change_pct, 2, true)}% · 振幅 ${fmt(q.amplitude_pct, 2)}%`, cls(s.change_pct)],
+      ["总市值 / 流通市值", `${fmt(q.mcap_yi, 1)} / ${fmt(q.float_mcap_yi, 1)} 亿`, "腾讯校准口径 f[45] / f[44]", ""],
+      ["市净率 PB / PE(TTM)", `${fmt(q.pb, 2)}x / ${fmt(q.pe_ttm, 1)}x`, "PB=f[46]（非f[43]振幅）", ""],
+      ["换手率 / 成交额", `${fmt(q.turnover_pct, 2)}% / ${fmt((q.amount_wan || 0) / 10000, 2)} 亿`, "成交量单位：股（万股）", ""],
+      ["阶段涨跌幅", `5日 ${fmt(s.ret_5d, 1, true)}%`, `20日 ${fmt(s.ret_20d, 1, true)}% · 60日 ${fmt(s.ret_60d, 1, true)}%`, cls(s.ret_5d)],
+    ]
+      .map(
+        (x) =>
+          `<div class="stat-box"><div class="sk">${x[0]}</div><div class="sv num ${x[3]}">${x[1]}</div><div class="sd num">${x[2]}</div></div>`
+      )
+      .join("");
+
+    renderSmcRibbon($("ribbon-ydw"), item);
+
+    const state = UI_STATE.tech.yandongwei;
+    const chYdw = registerChart($("chart-ydw"));
+    const redraw = () => drawTechChart(chYdw, item, state);
+    createTechToolbar($("ydwToolbar"), state, redraw, false);
+    redraw();
+
+    $("ydwFootnote").innerHTML =
+      `<b>燕东微（688172.SH）口径说明</b>：日K来自腾讯财经前复权（${m.date_range[0]} 至 ${m.date_range[1]}，共 ${m.bar_count} 根）。严格遵循 <code>a-stock-data V3.10.1</code> 校验规则：<b>科创板（688/689）腾讯K线成交量原始单位为「股」</b>（图表自动换算为「万股」），避免按主板「手」误算放大100倍；市值严格区分总市值 <code>f[45]</code> 与流通市值 <code>f[44]</code>。`;
+
+    renderSmcDetailTables(item, "ydwZonesTable", "ydwEventsTable");
+  }
+
   window.addEventListener("resize", () => {
     allCharts.forEach((c) => {
       if (c && !c.isDisposed()) c.resize();
     });
   });
 
-  // Scheduled Beijing Time auto-refresh slots: 09:00, 11:30, 15:00, 22:30
-  const SCHEDULED_SLOTS = new Set(["09:00", "11:30", "15:00", "22:30"]);
-  let lastTriggeredSlot = "";
-  function startScheduledClockWatcher() {
-    setInterval(() => {
-      if (!window.LiveMarketEngine) return;
-      const cstNow = window.LiveMarketEngine.nowCstFull(); // YYYY-MM-DD HH:MM:SS
-      const slotKey = cstNow.slice(0, 16); // YYYY-MM-DD HH:MM
-      const hhmm = cstNow.slice(11, 16);
-      if (SCHEDULED_SLOTS.has(hhmm) && lastTriggeredSlot !== slotKey) {
-        lastTriggeredSlot = slotKey;
-        showToast(`到达定时节点（${hhmm}），正在自动更新最新行情…`);
-        loadDashboard();
-      }
-    }, 20000);
+  const backTopBtn = $("backTopBtn");
+  if (backTopBtn) {
+    window.addEventListener("scroll", () => {
+      backTopBtn.classList.toggle("visible", window.scrollY > 360);
+    }, { passive: true });
+    backTopBtn.addEventListener("click", () => window.scrollTo({ top: 0, behavior: "smooth" }));
   }
-
-    const backTopBtn = $("backTopBtn");
-    if (backTopBtn) {
-      window.addEventListener("scroll", () => {
-        backTopBtn.classList.toggle("visible", window.scrollY > 360);
-      }, { passive: true });
-      backTopBtn.addEventListener("click", () => window.scrollTo({ top: 0, behavior: "smooth" }));
-    }
 
   detectHostCapabilities().finally(() => {
     loadDashboard();
-    startScheduledClockWatcher();
   });
 })();

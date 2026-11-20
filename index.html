@@ -3,13 +3,13 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>A股与大类资产每日投研监控看板</title>
-  <meta name="description" content="每日自动更新的多资产投研看板：沪深300全收益与二级债基波动收敛、国家队16只宽基ETF份额动向，以及科创50、创业板指、黄金日K与SMC聪明钱技术分析。" />
+  <title>A股与大类资产实时投研监控看板</title>
+  <meta name="description" content="打开即实时直连并每分钟自动刷新的多资产投研看板：沪深300全收益与二级债基波动收敛、国家队16只宽基ETF份额动向，以及科创50、创业板指日K与SMC聪明钱技术分析。" />
   <meta property="og:type" content="website" />
-  <meta property="og:title" content="A股与大类资产每日投研监控看板" />
-  <meta property="og:description" content="股债波动收敛 · 国家队宽基ETF份额 · 科创50 / 创业板指 / 黄金 日K + SMC聪明钱结构" />
+  <meta property="og:title" content="A股与大类资产实时投研监控看板" />
+  <meta property="og:description" content="股债波动收敛 · 国家队宽基ETF份额 · 科创50 / 创业板指 日K + SMC聪明钱结构 · 实时简报" />
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23141c2b'/%3E%3Cpath d='M6 22l6-7 5 4 9-11' stroke='%2360a5fa' stroke-width='3' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E" />
-  <link rel="stylesheet" href="assets/styles.css?v=5" />
+  <link rel="stylesheet" href="assets/styles.css?v=6" />
   <script src="assets/vendor/echarts.min.js"
           onerror="document.write('<script src=&quot;https://cdn.bootcdn.net/ajax/libs/echarts/5.5.0/echarts.min.js&quot;><\/script>')"></script>
 </head>
@@ -19,22 +19,20 @@
       <div class="brand">
         <div class="brand-mark"></div>
         <div>
-          <h1 id="pageTitle">A股与大类资产每日投研监控看板</h1>
-          <div class="brand-meta" id="metaLine">正在加载最新市场数据…</div>
+          <h1 id="pageTitle">A股与大类资产实时投研监控看板</h1>
+          <div class="brand-meta" id="metaLine">正在直连拉取最新实时行情…</div>
         </div>
       </div>
       <nav class="nav-links">
-        <a href="#sec-briefing">09:00晨报</a>
+        <a href="#sec-briefing" id="navBriefingLink">实时简报</a>
         <a href="#sec-convergence">1. 股债收敛</a>
         <a href="#sec-gjd">2. 国家队</a>
         <a href="#sec-star50">3. 科创50</a>
         <a href="#sec-cyb">4. 创业板指</a>
-        <a href="#sec-gold">5. 黄金</a>
         <a href="#sec-method">口径</a>
         <span class="nav-divider"></span>
-        <button type="button" class="refresh-btn" id="autoPollBtn" title="开启或关闭每 60 秒自动拉取实时行情">⏱ 60s: 关</button>
         <button type="button" class="refresh-btn" id="shareBtn" title="复制页面链接分享给他人">🔗 分享</button>
-        <button type="button" class="refresh-btn primary" id="refreshBtn" title="立即直连拉取最新实时行情">↻ 实时刷新</button>
+        <button type="button" class="refresh-btn primary" id="refreshBtn" title="立即直连拉取最新实时行情并更新简报">↻ 实时刷新</button>
       </nav>
     </div>
   </header>
@@ -42,25 +40,26 @@
   <main class="wrap">
     <div class="banner" id="banner"></div>
 
-    <!-- 全局概览卡片（5大核心项目） -->
+    <!-- 全局概览卡片（4大核心项目） -->
     <section class="kpi-strip" id="kpiStrip"></section>
 
-    <!-- 每日 09:00 晨间波浪理论 + 通道理论简报 -->
+    <!-- 实时波浪理论 + 通道理论投研简报（每次打开按最新行情即时生成） -->
     <section class="briefing-sec" id="sec-briefing" style="display:none;">
-      <div class="briefing-banner">
+      <div class="briefing-banner" id="briefingBanner">
         <div>
           <div class="briefing-title-row">
-            <span class="briefing-pill" id="briefingEditionPill">09:00 晨报</span>
-            <h2>每日 09:00 波浪理论 × 通道理论 投研简报</h2>
+            <span class="briefing-pill" id="briefingEditionPill">实时行情动态生成</span>
+            <h2>实时波浪理论 × 通道理论 投研简报</h2>
           </div>
-          <div class="briefing-headline" id="briefingHeadline">正在生成今日简报…</div>
+          <div class="briefing-headline" id="briefingHeadline">正在根据最新实时行情生成简报…</div>
         </div>
         <div class="briefing-actions">
+          <button type="button" class="briefing-btn" id="refreshBriefingBtn" title="按最新实时行情重新生成简报">↻ 重新生成</button>
           <button type="button" class="briefing-btn" id="copyBriefingBtn">📋 复制简报</button>
-          <button type="button" class="briefing-btn" id="toggleBriefingBtn">收起</button>
+          <button type="button" class="briefing-btn" id="toggleBriefingBtn">展开简报</button>
         </div>
       </div>
-      <div class="briefing-body" id="briefingBody">
+      <div class="briefing-body" id="briefingBody" style="display:none;">
         <div class="briefing-grid" id="briefingGrid"></div>
         <div class="briefing-foot" id="briefingFoot"></div>
       </div>
@@ -229,30 +228,6 @@
       <div class="footnote" id="cybFootnote"></div>
     </section>
 
-    <!-- 项目 5：黄金技术分析 -->
-    <section class="section" id="sec-gold">
-      <div class="sec-header">
-        <div class="sec-title-wrap">
-          <div class="sec-bar" style="background:var(--amber)"></div>
-          <div>
-            <h2 class="sec-title">5. 黄金技术分析走势图（日K + SMC聪明钱框架）</h2>
-            <div class="sec-subtitle">支持一键切换伦敦金现（XAU/USD，美元/盎司）、黄金股ETF（517520.SH）与黄金ETF（518880.SH）</div>
-          </div>
-        </div>
-        <div class="btn-group" id="goldSymbolGroup">
-          <button type="button" data-key="gold_xau" class="active">伦敦金现 XAU/USD</button>
-          <button type="button" data-key="gold_stock_etf">黄金股ETF 517520</button>
-          <button type="button" data-key="gold_etf">黄金ETF 518880</button>
-        </div>
-      </div>
-
-      <div class="toolbar" id="goldToolbar"></div>
-      <div class="sub-panel-head" id="head-gold"></div>
-      <div class="smc-ribbon" id="ribbon-gold"></div>
-      <div class="chart-tech" id="chart-gold"></div>
-      <div class="footnote" id="goldFootnote"></div>
-    </section>
-
     <!-- 统一方案与方法论说明 -->
     <section class="section" id="sec-method">
       <div class="sec-header">
@@ -260,36 +235,36 @@
           <div class="sec-bar" style="background:var(--sub)"></div>
           <div>
             <h2 class="sec-title">统一方案、数据口径与防未来函数说明</h2>
-            <div class="sec-subtitle">集中提炼自 AI公园 GitHub 开源金融项目榜单、亿点毛噜噜 SMC 框架、simonlin1212/a-stock-data V3.10.4 与 etf.maomaoci-a.com</div>
+            <div class="sec-subtitle">纯前端实时直连行情 + 本地内置 ECharts，打开即最新并每分钟自动更新</div>
           </div>
         </div>
       </div>
 
       <div class="method-grid">
         <div class="method-card">
-          <h4>一、工程闭环与可维护架构</h4>
-          <p>吸收 <b>daily_stock_analysis / tick-stock-panel / etf.maomaoci-a.com</b> 的轻量化思路：采用 <b>「Python 定时取数引擎 → 静态 JSON/JS 快照 → 纯前端 ECharts 看板」</b> 三层解耦结构，ECharts 引擎本地内置零外部 CDN 依赖，支持 GitHub Pages 公开分享与单文件离线转发。</p>
+          <h4>一、打开即最新与每分钟自动刷新</h4>
+          <p>页面打开时立即在浏览器端直连最新公开行情接口，同步补齐当日盘中/收盘 K 线并即时重算全部技术指标、SMC 聪明钱结构与波浪/通道简报；此后自动按<b>每 60 秒</b>频率持续刷新，每次点开简报均依据当下最新行情实时生成。</p>
         </div>
         <div class="method-card">
           <h4>二、免Key数据源优先级与口径防坑</h4>
-          <p>遵循 <b>a-stock-data V3.10.4</b> 铁律：行情优先走不封 IP 的<b>腾讯财经（三入口轮换）</b>、<b>中证官方（H00300/H11023/H11022）</b>、<b>上金所官方（Au99.99）</b>、<b>新浪期货（AU0）</b>及<b>上交所/深交所官方 ETF 份额</b>，并配置增量缓存兜底。</p>
+          <p>遵循 <b>a-stock-data V3.10.4</b> 规范：A股宽基与 ETF 行情直连不封 IP 的<b>腾讯财经（三入口轮换）</b>，长周期股债基准取自<b>中证官方（H00300/H11023/H11022）</b>，国家队份额来自<b>上交所/深交所官方 ETF 份额与中金所口径</b>。</p>
         </div>
         <div class="method-card">
           <h4>三、SMC 聪明钱指标与防未来函数</h4>
-          <p>参考 <b>LuxAlgo SMC</b> 与招商证券研报框架，在日K上区分<b>波段结构（L=10，实线）</b>与<b>内部结构（L=3，虚线）</b>，以收盘价突破判定 BOS/CHoCH，以 High/Low 触碰判定订单块（OB）失效。<b>重要提示</b>：分形支点存在 L 个交易日确认滞后，订单块在结构突破日才生成并向左锚定参考K线，复盘时切勿将左端锚点误作当下实时信号；Weak Low 仅代表顺势角色，不等于底部确认。</p>
+          <p>参考 <b>LuxAlgo SMC</b> 框架，在日K上区分<b>波段结构（L=10，实线）</b>与<b>内部结构（L=3，虚线）</b>，以收盘价突破判定 BOS/CHoCH，以 High/Low 触碰判定订单块（OB）失效。分形支点存在 L 个交易日确认滞后，复盘时切勿将左端锚点误作当下实时信号。</p>
         </div>
       </div>
     </section>
 
     <footer class="footer">
-      数据来源：中证指数官网 / 上交所 / 深交所 / 中金所 / 上金所 / 腾讯财经 / 新浪期货 / etf.maomaoci-a.com　·　本页面仅用于投研数据展示与技术方法验证，不构成任何投资建议
+      数据来源：中证指数官网 / 上交所 / 深交所 / 中金所 / 腾讯财经 / etf.maomaoci-a.com　·　本页面仅用于投研数据展示与技术方法验证，不构成任何投资建议
     </footer>
   </main>
 
   <button type="button" class="back-top" id="backTopBtn" title="返回页面顶部">↑ 顶部</button>
   <div class="toast" id="toast"></div>
   <script src="data/dashboard_data.js"></script>
-  <script src="assets/live_engine.js?v=5"></script>
-  <script src="assets/app.js?v=5"></script>
+  <script src="assets/live_engine.js?v=6"></script>
+  <script src="assets/app.js?v=6"></script>
 </body>
 </html>
