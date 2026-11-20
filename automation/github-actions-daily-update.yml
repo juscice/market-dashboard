@@ -38,6 +38,6 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add data/dashboard_data.json data/dashboard_data.js data/etf_history_cache.json data/cache/ dist/market-dashboard-share.html dist/yandongwei-share.html
+          git add data/dashboard_data.json data/dashboard_data.js data/morning_briefing.json data/briefings/ data/etf_history_cache.json data/cache/ dist/market-dashboard-share.html dist/yandongwei-share.html
           git diff --cached --quiet || git commit -m "chore: scheduled market data update ($(date -u +'%Y-%m-%d %H:%M UTC'))"
           git push

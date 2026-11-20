@@ -167,12 +167,12 @@
         clearInterval(autoPollTimer);
         autoPollTimer = null;
         btn.classList.remove("active");
-        btn.textContent = "⏱ 自动60s: 关";
+        btn.textContent = "⏱ 60s: 关";
         showToast("已关闭每 60 秒自动实时刷新");
       } else {
         autoPollTimer = setInterval(() => runLiveSync(true), 60000);
         btn.classList.add("active");
-        btn.textContent = "⏱ 自动60s: 开";
+        btn.textContent = "⏱ 60s: 开";
         showToast("已开启每 60 秒自动实时刷新");
         runLiveSync(false);
       }
@@ -252,6 +252,7 @@
       renderYandongwei(D.technical.yandongwei);
     } else {
       renderKpiStrip(D);
+      renderMorningBriefing(D.morning_briefing);
       renderConvergence(D.convergence);
       renderNationalTeam(D.national_team);
       renderSingleTechSection("star50", D.technical.star50);
@@ -269,6 +270,7 @@
     const cards = [
       {
         href: "#sec-convergence",
+        accent: "#0f172a",
         title: "1. 300全收益 − 二级债基",
         tag: cs.is_currently_below ? "跌破区间" : "溢价区间",
         val: fmt(cs.spread_pct, 1, true) + " pct",
@@ -278,6 +280,7 @@
       },
       {
         href: "#sec-gjd",
+        accent: "#2563eb",
         title: "2. 国家队监控ETF份额",
         tag: gs.latest_date,
         val: fmt(gs.total_shares_yi, 1) + " 亿份",
@@ -286,15 +289,15 @@
         subR: `规模 ${fmt(gs.total_aum_yi, 0)}亿`,
         subCls: cls(gs.flow_1d_yi),
       },
-      makeTechKpi("#sec-star50", "3. 科创50", t.star50),
-      makeTechKpi("#sec-cyb", "4. 创业板指", t.cyb),
-      makeTechKpi("#sec-gold", "5. 伦敦金现 XAU", t.gold_xau),
+      { ...makeTechKpi("#sec-star50", "3. 科创50", t.star50), accent: "#6d4aff" },
+      { ...makeTechKpi("#sec-cyb", "4. 创业板指", t.cyb), accent: "#0d9488" },
+      { ...makeTechKpi("#sec-gold", "5. 伦敦金现 XAU", t.gold_xau), accent: "#d97706" },
     ];
 
     $("kpiStrip").innerHTML = cards
       .map(
         (c) => `
-      <a class="kpi-card" href="${c.href}">
+      <a class="kpi-card" href="${c.href}" style="--accent:${c.accent}">
         <div class="k-head"><span>${c.title}</span><span class="num">${c.tag}</span></div>
         <div class="k-val num ${c.valCls}">${c.val}</div>
         <div class="k-sub">
@@ -304,6 +307,96 @@
       </a>`
       )
       .join("");
+  }
+
+  /* ==================== 09:00 Morning Briefing (Wave + Channel) ==================== */
+  function renderMorningBriefing(B) {
+    const sec = $("sec-briefing");
+    if (!sec) return;
+    if (!B || !B.items || !B.items.length) {
+      sec.style.display = "none";
+      return;
+    }
+    sec.style.display = "";
+    $("briefingEditionPill").textContent = `${B.edition_date} · 每日 09:00 自动生成`;
+    $("briefingHeadline").textContent = B.headline || "";
+
+    const biasBadge = (bias) => {
+      if (bias === "bullish") return '<span class="badge bull">偏多信号</span>';
+      if (bias === "bearish") return '<span class="badge bear">偏空/承压</span>';
+      return '<span class="badge neutral">震荡观察</span>';
+    };
+
+    $("briefingGrid").innerHTML = B.items
+      .map((it, idx) => {
+        const isWide = idx < 2; // Top row: 2 macro cards; bottom row: 3 technical wave/channel cards
+        const lv = it.key_levels || {};
+        const chgHtml =
+          it.change_pct != null
+            ? `<span class="num ${cls(it.change_pct)}" style="font-size:12px;font-weight:700;">${fmt(it.change_pct, 2, true)}%</span>`
+            : "";
+        return `
+        <div class="b-card ${isWide ? "wide" : ""}">
+          <div class="b-card-head">
+            <a class="b-card-title" href="${it.href}">
+              <span class="b-num-dot">${it.index}</span>
+              <span>${it.title}</span>
+              <span class="code-tag num">${it.code}</span>
+            </a>
+            <div style="display:flex;align-items:center;gap:6px;">
+              ${chgHtml}
+              ${biasBadge(it.bias)}
+            </div>
+          </div>
+          <div class="b-tags">
+            <span class="b-tag"><b>${isWide ? "周期" : "波浪"}</b>${it.wave_stage}</span>
+            <span class="b-tag"><b>${isWide ? "状态" : "通道"}</b>${it.channel_stage}</span>
+          </div>
+          <div class="b-levels num">
+            <div><span>${isWide ? "基准/近期" : "下轨支撑"}</span><strong>${lv.support || "—"}</strong></div>
+            <div><span>${isWide ? "核心读数" : "通道中轨"}</span><strong>${lv.mid || "—"}</strong></div>
+            <div><span>${isWide ? "对比/规模" : "上轨压力"}</span><strong>${lv.resistance || "—"}</strong></div>
+          </div>
+          <div class="b-view">${it.view}</div>
+        </div>`;
+      })
+      .join("");
+
+    $("briefingFoot").innerHTML =
+      `<span>简报生成时间：<b class="num">${B.generated_at}</b>（每日 09:00 自动刷新晨报；盘中图表仍实时直连更新）</span>` +
+      `<span>方法论：自适应 ZigZag 波浪划分 + 60日线性回归通道 + 斐波那契关键位，仅供参考不构成投资建议</span>`;
+
+    const copyBtn = $("copyBriefingBtn");
+    if (copyBtn) {
+      copyBtn.onclick = async () => {
+        const txt = B.plain_text || B.headline || "";
+        try {
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            await navigator.clipboard.writeText(txt);
+          } else {
+            const ta = document.createElement("textarea");
+            ta.value = txt;
+            document.body.appendChild(ta);
+            ta.select();
+            document.execCommand("copy");
+            document.body.removeChild(ta);
+          }
+          showToast("已复制今日 09:00 晨间简报文本，可直接粘贴至微信/群聊");
+        } catch (_) {
+          showToast("复制失败，请手动选中复制");
+        }
+      };
+    }
+
+    const toggleBtn = $("toggleBriefingBtn");
+    const bodyEl = $("briefingBody");
+    if (toggleBtn && bodyEl) {
+      toggleBtn.onclick = () => {
+        const hidden = bodyEl.style.display === "none";
+        bodyEl.style.display = hidden ? "" : "none";
+        toggleBtn.textContent = hidden ? "收起" : "展开";
+      };
+    }
   }
 
   function makeTechKpi(href, label, item) {
@@ -841,13 +934,15 @@
         </div>
       </div>
       <div class="toggle-pills" data-role="layers">
-        <button class="pill ${state.ma ? "active" : ""}" data-layer="ma">MA均线</button>
-        <button class="pill ${state.boll ? "active" : ""}" data-layer="boll">BOLL</button>
-        <button class="pill ${state.structure ? "active" : ""}" data-layer="structure">SMC结构(BOS/CHoCH)</button>
-        <button class="pill ${state.ob ? "active" : ""}" data-layer="ob">订单块 OB</button>
-        <button class="pill ${state.fvg ? "active" : ""}" data-layer="fvg">公允缺口 FVG</button>
-        <button class="pill ${state.pd ? "active" : ""}" data-layer="pd">折溢价区 P/D</button>
-        <button class="pill ${state.eq ? "active" : ""}" data-layer="eq">流动性 EQH/EQL</button>
+        <button type="button" class="pill ${state.ma ? "active" : ""}" data-layer="ma">MA均线</button>
+        <button type="button" class="pill ${state.boll ? "active" : ""}" data-layer="boll">BOLL</button>
+        <button type="button" class="pill accent-wave ${state.wave ? "active" : ""}" data-layer="wave">波浪 ZigZag</button>
+        <button type="button" class="pill accent-chan ${state.channel ? "active" : ""}" data-layer="channel">趋势通道</button>
+        <button type="button" class="pill ${state.structure ? "active" : ""}" data-layer="structure">SMC结构</button>
+        <button type="button" class="pill ${state.ob ? "active" : ""}" data-layer="ob">订单块 OB</button>
+        <button type="button" class="pill ${state.fvg ? "active" : ""}" data-layer="fvg">FVG</button>
+        <button type="button" class="pill ${state.pd ? "active" : ""}" data-layer="pd">折溢价 P/D</button>
+        <button type="button" class="pill ${state.eq ? "active" : ""}" data-layer="eq">EQH/EQL</button>
       </div>
     `;
 
@@ -899,15 +994,20 @@
     const lastSw = smc.last_swing_event
       ? `${smc.last_swing_event.bias === "bullish" ? "多头" : "空头"}${smc.last_swing_event.kind} @ ${fmt(smc.last_swing_event.price, d)} (${smc.last_swing_event.break_date.slice(5)})`
       : "—";
+    const ch = item.channel;
+    const chChip = ch
+      ? `<span class="smc-item num"><span class="lbl">60日通道:</span> <b>${ch.direction}</b> (${fmt(ch.pos_pct, 0)}%)</span>`
+      : "";
     el.innerHTML = `
       <span class="smc-item"><span class="lbl">波段结构:</span> ${trendBadge(smc.swing_trend)}</span>
       <span class="smc-item"><span class="lbl">内部结构:</span> ${trendBadge(smc.internal_trend)}</span>
+      ${chChip}
       <span class="smc-item num"><span class="lbl">${z.swing_high_role.split(" ")[0]} High:</span> <b>${fmt(z.swing_high, d)}</b></span>
       <span class="smc-item num"><span class="lbl">${z.swing_low_role.split(" ")[0]} Low:</span> <b>${fmt(z.swing_low, d)}</b></span>
       <span class="smc-item num"><span class="lbl">区间位置:</span> <b>${fmt(z.current_pos_pct, 1)}%</b>（${z.zone_label.split(" ")[0]}）</span>
       <span class="smc-item num"><span class="lbl">活跃OB:</span> ${s.active_bull_ob_count}多 / ${s.active_bear_ob_count}空</span>
       <span class="smc-item num"><span class="lbl">未补FVG:</span> ${s.active_fvg_count}</span>
-      <span class="smc-item num"><span class="lbl">最近波段信号:</span> ${lastSw}</span>
+      <span class="smc-item num"><span class="lbl">最近波段:</span> ${lastSw}</span>
       <span class="smc-item num"><span class="lbl">RSI14:</span> <b>${fmt(s.rsi14, 1)}</b></span>
       <span class="smc-item num"><span class="lbl">20日涨跌:</span> <b class="${cls(s.ret_20d)}">${fmt(s.ret_20d, 1, true)}%</b></span>
     `;
@@ -1063,6 +1163,41 @@
       });
     }
 
+    // 60-day Linear Regression Channel overlay (通道理论)
+    if (state.channel && item.channel && item.channel.lines) {
+      const ln = item.channel.lines;
+      const addRail = (vals, lbl, type, width) => {
+        markLines.push([
+          {
+            coord: [ln.start_date, vals[0]],
+            lineStyle: { color: COLORS.purple, width, type, opacity: 0.78 },
+            label: { show: true, formatter: lbl, position: "end", color: COLORS.purple, fontSize: 9.5 },
+          },
+          { coord: [ln.end_date, vals[1]] },
+        ]);
+      };
+      addRail(ln.upper, "上轨", "dashed", 1.35);
+      addRail(ln.mid, "中轨", "dotted", 1.1);
+      addRail(ln.lower, "下轨", "dashed", 1.35);
+    }
+
+    // Elliott Wave ZigZag overlay (波浪理论)
+    const wavePivots = state.wave && item.wave && Array.isArray(item.wave.pivots) ? item.wave.pivots : [];
+    if (wavePivots.length >= 2) {
+      for (let i = 0; i < wavePivots.length - 1; i++) {
+        const a = wavePivots[i];
+        const b = wavePivots[i + 1];
+        markLines.push([
+          {
+            coord: [a.date, a.price],
+            lineStyle: { color: "#d97706", width: 1.9, type: b.developing ? "dashed" : "solid" },
+            label: { show: false },
+          },
+          { coord: [b.date, b.price] },
+        ]);
+      }
+    }
+
     // Volume display scaling (especially important for 科创板 where unit is 股!)
     const hasVol = item.volumes && item.volumes.some((v) => v != null && v > 0);
     let volDiv = 1;
@@ -1152,6 +1287,32 @@
           lineStyle: { width: 1.1, color, type },
           itemStyle: { color },
         });
+      });
+    }
+
+    if (wavePivots.length >= 2) {
+      series.push({
+        name: "波浪拐点",
+        type: "scatter",
+        xAxisIndex: 0,
+        yAxisIndex: 0,
+        data: wavePivots
+          .filter((p) => p.label)
+          .map((p) => ({
+            value: [p.date, p.price],
+            name: p.label,
+          })),
+        symbol: "circle",
+        symbolSize: 18,
+        itemStyle: { color: "#fff7ed", borderColor: "#d97706", borderWidth: 1.6 },
+        label: {
+          show: true,
+          formatter: (p) => p.data.name,
+          color: "#b45309",
+          fontSize: 10,
+          fontWeight: 700,
+        },
+        z: 8,
       });
     }
 
@@ -1322,7 +1483,7 @@
     const badgeEl = $(key + "DateBadge");
     if (badgeEl) badgeEl.textContent = `最新交易日：${s.latest_date}（共 ${m.bar_count} 根日K）`;
 
-    const state = { bars: 130, sub: "macd", ma: true, boll: false, structure: true, ob: true, fvg: true, pd: true, eq: true };
+    const state = { bars: 130, sub: "macd", ma: true, boll: false, wave: true, channel: true, structure: true, ob: true, fvg: false, pd: true, eq: false };
     const ch = registerChart($("chart-" + key));
 
     renderTechHeader($("head-" + key), item);
@@ -1342,7 +1503,7 @@
   /* ==================== Module 5: Gold (伦敦金现 / 黄金股ETF / 黄金ETF) ==================== */
   function renderGold(T) {
     let activeKey = "gold_xau";
-    const state = { bars: 130, sub: "macd", ma: true, boll: false, structure: true, ob: true, fvg: true, pd: true, eq: true };
+    const state = { bars: 130, sub: "macd", ma: true, boll: false, wave: true, channel: true, structure: true, ob: true, fvg: false, pd: true, eq: false };
     const chGold = registerChart($("chart-gold"));
 
     function redraw() {
@@ -1395,7 +1556,7 @@
 
     renderSmcRibbon($("ribbon-ydw"), item);
 
-    const state = { bars: 130, sub: "macd", ma: true, boll: false, structure: true, ob: true, fvg: true, pd: true, eq: true };
+    const state = { bars: 130, sub: "macd", ma: true, boll: false, wave: true, channel: true, structure: true, ob: true, fvg: false, pd: true, eq: false };
     const chYdw = registerChart($("chart-ydw"));
     const redraw = () => drawTechChart(chYdw, item, state);
     createTechToolbar($("ydwToolbar"), state, redraw);
@@ -1489,6 +1650,14 @@
       }
     }, 20000);
   }
+
+    const backTopBtn = $("backTopBtn");
+    if (backTopBtn) {
+      window.addEventListener("scroll", () => {
+        backTopBtn.classList.toggle("visible", window.scrollY > 360);
+      }, { passive: true });
+      backTopBtn.addEventListener("click", () => window.scrollTo({ top: 0, behavior: "smooth" }));
+    }
 
   detectHostCapabilities().finally(() => {
     loadDashboard();

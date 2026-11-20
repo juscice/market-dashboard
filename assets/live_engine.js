@@ -435,6 +435,11 @@
     const trendMap = { 1: "偏多 (Bullish)", "-1": "偏空 (Bearish)", 0: "震荡待确认 (Neutral)" };
     const retN = (k) => (n > k && closes[n - 1 - k] > 0 ? roundOpt(((lastClose / closes[n - 1 - k]) - 1) * 100, 2) : null);
 
+    // Lightweight Wave ZigZag + 60-day Linear Regression Channel for live chart overlays
+    const thresh = (meta && (meta.key === "gold_xau" || meta.key === "gold_etf")) ? 0.045 : 0.06;
+    const wave = computeWaveOverlay(bars, decimals, thresh);
+    const channel = computeChannelOverlay(bars, 60, decimals);
+
     return {
       meta: {
         ...meta,
@@ -445,6 +450,8 @@
       ohlc: bars.map((b) => [roundOpt(b.open, decimals), roundOpt(b.close, decimals), roundOpt(b.low, decimals), roundOpt(b.high, decimals)]),
       volumes,
       indicators: { ma5, ma10, ma20, ma60, ma120, boll, macd, rsi14, atr14: atr14.map((v) => roundOpt(v, decimals)) },
+      wave,
+      channel,
       smc: {
         swing_trend: swing.trend,
         swing_trend_label: trendMap[swing.trend],
@@ -491,6 +498,98 @@
         active_bull_ob_count: activeObs.filter((o) => o.bias === "bullish").length,
         active_bear_ob_count: activeObs.filter((o) => o.bias === "bearish").length,
         active_fvg_count: activeFvgs.length,
+      },
+    };
+  }
+
+  /* ==================== Live Wave ZigZag + 60D Channel Overlays ==================== */
+  function computeWaveOverlay(bars, decimals = 2, pctThreshold = 0.055) {
+    const win = bars.slice(-Math.min(bars.length, 260));
+    if (win.length < 10) return { wave_stage: "待确认", pivots: [] };
+    const runZigzag = (th) => {
+      const piv = [];
+      let dir = 0, extIdx = 0, extPrice = Number(win[0].close);
+      for (let i = 1; i < win.length; i++) {
+        const hi = Number(win[i].high), lo = Number(win[i].low);
+        if (dir === 0) {
+          if (hi >= extPrice * (1 + th)) {
+            piv.push({ date: win[extIdx].date, price: roundOpt(win[extIdx].low, decimals), type: "L" });
+            dir = 1; extIdx = i; extPrice = hi;
+          } else if (lo <= extPrice * (1 - th)) {
+            piv.push({ date: win[extIdx].date, price: roundOpt(win[extIdx].high, decimals), type: "H" });
+            dir = -1; extIdx = i; extPrice = lo;
+          } else if (hi > extPrice) { extPrice = hi; extIdx = i; }
+        } else if (dir === 1) {
+          if (hi >= extPrice) { extPrice = hi; extIdx = i; }
+          else if (lo <= extPrice * (1 - th)) {
+            piv.push({ date: win[extIdx].date, price: roundOpt(extPrice, decimals), type: "H" });
+            dir = -1; extIdx = i; extPrice = lo;
+          }
+        } else {
+          if (lo <= extPrice) { extPrice = lo; extIdx = i; }
+          else if (hi >= extPrice * (1 + th)) {
+            piv.push({ date: win[extIdx].date, price: roundOpt(extPrice, decimals), type: "L" });
+            dir = 1; extIdx = i; extPrice = hi;
+          }
+        }
+      }
+      if (dir !== 0) piv.push({ date: win[extIdx].date, price: roundOpt(extPrice, decimals), type: dir === 1 ? "H" : "L", developing: true });
+      return piv;
+    };
+    let pivs = runZigzag(pctThreshold);
+    if (pivs.length < 4) pivs = runZigzag(pctThreshold * 0.65);
+    const recent = pivs.slice(-Math.min(pivs.length, 6));
+    const labels = recent.length >= 4 && recent[recent.length - 1].price < recent[recent.length - 2].price
+      ? ["0", "A", "B", "C"].slice(-Math.min(4, recent.length))
+      : ["0", "1", "2", "3", "4", "5"].slice(-recent.length);
+    const offset = recent.length - labels.length;
+    const chartPivots = recent.map((p, i) => ({ ...p, label: i >= offset ? labels[i - offset] : "" }));
+    const lastBar = win[win.length - 1];
+    if (chartPivots.length && chartPivots[chartPivots.length - 1].date < lastBar.date) {
+      chartPivots.push({ date: lastBar.date, price: roundOpt(lastBar.close, decimals), type: "C", label: "现", developing: true });
+    }
+    return { pivots: chartPivots };
+  }
+
+  function computeChannelOverlay(bars, windowLen = 60, decimals = 2) {
+    const w = Math.min(bars.length, windowLen);
+    if (w < 5) return null;
+    const seg = bars.slice(-w);
+    const closes = seg.map((b) => Number(b.close));
+    const xMean = (w - 1) / 2;
+    const yMean = closes.reduce((a, b) => a + b, 0) / w;
+    let num = 0, den = 0;
+    for (let i = 0; i < w; i++) {
+      num += (i - xMean) * (closes[i] - yMean);
+      den += (i - xMean) * (i - xMean);
+    }
+    const slope = den > 0 ? num / den : 0;
+    const intercept = yMean - slope * xMean;
+    let sq = 0;
+    for (let i = 0; i < w; i++) {
+      const r = closes[i] - (intercept + slope * i);
+      sq += r * r;
+    }
+    const band = Math.max(2 * Math.sqrt(sq / w), 1e-6);
+    const midS = intercept, midE = intercept + slope * (w - 1);
+    const upE = midE + band, dnE = midE - band;
+    const lastC = closes[w - 1];
+    const posPct = Math.max(0, Math.min(100, ((lastC - dnE) / (upE - dnE)) * 100));
+    const slopeAnn = yMean > 0 ? (slope * 242 / yMean) * 100 : 0;
+    const direction = slopeAnn >= 12 ? "上行通道" : slopeAnn <= -12 ? "下行通道" : "横向箱体通道";
+    return {
+      direction,
+      slope_ann_pct: roundOpt(slopeAnn, 1),
+      pos_pct: roundOpt(posPct, 1),
+      upper: roundOpt(upE, decimals),
+      mid: roundOpt(midE, decimals),
+      lower: roundOpt(dnE, decimals),
+      lines: {
+        start_date: seg[0].date,
+        end_date: seg[w - 1].date,
+        upper: [roundOpt(midS + band, decimals), roundOpt(upE, decimals)],
+        mid: [roundOpt(midS, decimals), roundOpt(midE, decimals)],
+        lower: [roundOpt(midS - band, decimals), roundOpt(dnE, decimals)],
       },
     };
   }

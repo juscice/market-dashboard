@@ -9,7 +9,7 @@
   <meta property="og:title" content="A股与大类资产每日投研监控看板" />
   <meta property="og:description" content="股债波动收敛 · 国家队宽基ETF份额 · 科创50 / 创业板指 / 黄金 日K + SMC聪明钱结构" />
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23141c2b'/%3E%3Cpath d='M6 22l6-7 5 4 9-11' stroke='%2360a5fa' stroke-width='3' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E" />
-  <link rel="stylesheet" href="assets/styles.css?v=4" />
+  <link rel="stylesheet" href="assets/styles.css?v=5" />
   <script src="assets/vendor/echarts.min.js"
           onerror="document.write('<script src=&quot;https://cdn.bootcdn.net/ajax/libs/echarts/5.5.0/echarts.min.js&quot;><\/script>')"></script>
 </head>
@@ -24,15 +24,17 @@
         </div>
       </div>
       <nav class="nav-links">
+        <a href="#sec-briefing">09:00晨报</a>
         <a href="#sec-convergence">1. 股债收敛</a>
-        <a href="#sec-gjd">2. 国家队份额</a>
+        <a href="#sec-gjd">2. 国家队</a>
         <a href="#sec-star50">3. 科创50</a>
         <a href="#sec-cyb">4. 创业板指</a>
         <a href="#sec-gold">5. 黄金</a>
-        <a href="#sec-method">方案与口径</a>
-        <button type="button" class="refresh-btn" id="autoPollBtn" title="开启或关闭每 60 秒自动拉取实时行情">⏱ 自动60s: 关</button>
-        <button type="button" class="refresh-btn" id="shareBtn" title="复制页面链接分享给他人">🔗 分享链接</button>
-        <button type="button" class="refresh-btn" id="refreshBtn" title="立即直连拉取最新实时行情">↻ 实时刷新</button>
+        <a href="#sec-method">口径</a>
+        <span class="nav-divider"></span>
+        <button type="button" class="refresh-btn" id="autoPollBtn" title="开启或关闭每 60 秒自动拉取实时行情">⏱ 60s: 关</button>
+        <button type="button" class="refresh-btn" id="shareBtn" title="复制页面链接分享给他人">🔗 分享</button>
+        <button type="button" class="refresh-btn primary" id="refreshBtn" title="立即直连拉取最新实时行情">↻ 实时刷新</button>
       </nav>
     </div>
   </header>
@@ -42,6 +44,27 @@
 
     <!-- 全局概览卡片（5大核心项目） -->
     <section class="kpi-strip" id="kpiStrip"></section>
+
+    <!-- 每日 09:00 晨间波浪理论 + 通道理论简报 -->
+    <section class="briefing-sec" id="sec-briefing" style="display:none;">
+      <div class="briefing-banner">
+        <div>
+          <div class="briefing-title-row">
+            <span class="briefing-pill" id="briefingEditionPill">09:00 晨报</span>
+            <h2>每日 09:00 波浪理论 × 通道理论 投研简报</h2>
+          </div>
+          <div class="briefing-headline" id="briefingHeadline">正在生成今日简报…</div>
+        </div>
+        <div class="briefing-actions">
+          <button type="button" class="briefing-btn" id="copyBriefingBtn">📋 复制简报</button>
+          <button type="button" class="briefing-btn" id="toggleBriefingBtn">收起</button>
+        </div>
+      </div>
+      <div class="briefing-body" id="briefingBody">
+        <div class="briefing-grid" id="briefingGrid"></div>
+        <div class="briefing-foot" id="briefingFoot"></div>
+      </div>
+    </section>
 
     <!-- 项目 1：沪深300全收益 vs 二级债基指数 -->
     <section class="section" id="sec-convergence">
@@ -120,8 +143,8 @@
         </div>
       </div>
 
-      <details open style="margin-top:14px;">
-        <summary>16只监控宽基ETF最新份额与净流入快照（点击表头可排序）</summary>
+      <details style="margin-top:14px;">
+        <summary>16只监控宽基ETF最新份额与净流入明细表（点击表头可排序）</summary>
         <div class="tbl-wrap">
           <table id="gjdTable">
             <thead>
@@ -263,9 +286,10 @@
     </footer>
   </main>
 
+  <button type="button" class="back-top" id="backTopBtn" title="返回页面顶部">↑ 顶部</button>
   <div class="toast" id="toast"></div>
   <script src="data/dashboard_data.js"></script>
-  <script src="assets/live_engine.js?v=4"></script>
-  <script src="assets/app.js?v=4"></script>
+  <script src="assets/live_engine.js?v=5"></script>
+  <script src="assets/app.js?v=5"></script>
 </body>
 </html>

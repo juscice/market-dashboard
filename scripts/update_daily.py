@@ -22,7 +22,9 @@ ROOT_DIR = SCRIPT_DIR.parent
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
+from briefing_engine import analyze_elliott_wave, analyze_price_channel, generate_morning_briefing
 from data_sources import (
+    CST,
     csi_index_perf,
     fetch_national_team_bundle,
     now_cst_str,
@@ -396,6 +398,51 @@ def main() -> int:
     ]
     latest_market_date = max((d for d in all_dates if d), default="")
 
+    # Attach latest wave & channel chart overlays to every technical asset
+    for k, item in technical.items():
+        bars = [
+            {
+                "date": item["dates"][i],
+                "open": item["ohlc"][i][0],
+                "close": item["ohlc"][i][1],
+                "low": item["ohlc"][i][2],
+                "high": item["ohlc"][i][3],
+            }
+            for i in range(len(item["dates"]))
+        ]
+        dec = int(item["meta"]["decimals"])
+        thresh = 0.045 if k in ("gold_xau", "gold_etf") else 0.06
+        item["wave"] = analyze_elliott_wave(bars, decimals=dec, pct_threshold=thresh)
+        item["channel"] = analyze_price_channel(bars, window_len=60, decimals=dec)
+
+    # Morning Briefing (daily 09:00 edition: generate at 09:xx or if today's edition not yet generated or --force-briefing)
+    now_cst = datetime.now(CST)
+    today_cst = now_cst.strftime("%Y-%m-%d")
+    force_briefing = "--force-briefing" in sys.argv
+    briefings_dir = data_dir / "briefings"
+    briefings_dir.mkdir(parents=True, exist_ok=True)
+    today_briefing_file = briefings_dir / f"{today_cst}.json"
+    latest_briefing_file = data_dir / "morning_briefing.json"
+
+    need_new_briefing = force_briefing or (not today_briefing_file.exists()) or (now_cst.hour == 9)
+    if need_new_briefing:
+        print(f"[4/4] Generating 09:00 Morning Briefing (Wave + Channel) for {today_cst} ...")
+        morning_briefing = generate_morning_briefing(
+            convergence=convergence,
+            national_team=national_team,
+            technical=technical,
+            generated_at=now_cst_str(),
+            edition_date=today_cst,
+        )
+        # Keep payload compact: overlays are already attached on technical[key]
+        briefing_compact = {k: v for k, v in morning_briefing.items() if k != "overlays"}
+        today_briefing_file.write_text(json.dumps(briefing_compact, ensure_ascii=False, indent=2), encoding="utf-8")
+        latest_briefing_file.write_text(json.dumps(briefing_compact, ensure_ascii=False, indent=2), encoding="utf-8")
+        print(f"  -> OK: 09:00 briefing saved ({today_briefing_file.name})")
+    else:
+        briefing_compact = json.loads(today_briefing_file.read_text(encoding="utf-8"))
+        print(f"[4/4] Preserving today's 09:00 Morning Briefing ({today_briefing_file.name})")
+
     payload = {
         "meta": {
             "title": cfg["dashboard_title"],
@@ -404,6 +451,7 @@ def main() -> int:
             "schedule_note": cfg["schedule_note"],
             "status": status_log,
         },
+        "morning_briefing": briefing_compact,
         "convergence": convergence,
         "national_team": national_team,
         "technical": technical,
